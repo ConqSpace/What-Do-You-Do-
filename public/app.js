@@ -1,10 +1,10 @@
 // Table UI: one SSE stream (init → msg / state), a handful of POSTs.
 
 const $ = (s) => document.querySelector(s);
-const STATS = ['근력', '민첩', '체력', '지능', '감각', '매력'];
-const BUDGET = 4;
+// Old d20 rolls (before rule modules) carried only `outcome`.
 const OUTCOME = { critical: '대성공', success: '성공', failure: '실패', fumble: '대실패' };
-const PHASE = { setup: '준비 전', prep: '캠페인 준비 중', declare: '선언', resolve: 'GM 판정 중', roll: '주사위!', 'gm-wait': 'GM 서술 대기', ended: '종료' };
+const OLD_TIER = { critical: 'crit', success: 'good', failure: 'bad', fumble: 'fumble' };
+const PHASE = { setup: '준비 전', prep: '캠페인 준비 중', declare: '선언', resolve: 'GM 판정 중', roll: '주사위 · 선택', 'gm-wait': 'GM 서술 대기', ended: '종료' };
 const PRESETS = [
   ['🏰 판타지', '국경 마을에서 사람들이 하나둘 사라지는 정통 판타지 모험'],
   ['🐙 코즈믹 호러', '1920년대 안개 낀 항구 도시, 바다에서 건져 올린 이상한 조각상과 연쇄 실종 사건'],
@@ -55,6 +55,12 @@ function connect() {
   es.addEventListener('state', (e) => {
     state = JSON.parse(e.data);
     renderState();
+  });
+  es.addEventListener('update', (e) => {
+    const m = JSON.parse(e.data);
+    const i = log.findIndex((x) => x.id === m.id);
+    if (i >= 0) log[i] = m;
+    document.querySelector(`#log [data-id="${m.id}"]`)?.replaceWith(htmlToNode(msgHtml(m, false)));
   });
   es.addEventListener('msg', (e) => {
     const m = JSON.parse(e.data);
@@ -110,11 +116,22 @@ function msgHtml(m, fresh) {
     case 'roll': {
       const r = m.roll;
       if (r.kind === 'check') {
-        const dice = r.dice.length > 1 ? `<span class="muted">[${r.dice.join(', ')}]</span>` : '';
-        const adv = r.adv === 'advantage' ? ' 유리' : r.adv === 'disadvantage' ? ' 불리' : '';
-        return `<div class="msg"><div class="roll ${r.outcome}${fresh ? ' fresh' : ''}">🎲 <b>${esc(charName(r.who))}</b> ${esc(r.stat)}${adv}
-          <span class="d20">${r.natural}</span>${dice} ${sign(r.mod)} = <b>${r.total}</b> <span class="muted">vs DC ${r.dc}</span>
-          <span class="res">${OUTCOME[r.outcome]}</span>${r.why ? `<span class="muted">· ${esc(r.why)}</span>` : ''}</div></div>`;
+        const tier = r.tier || OLD_TIER[r.outcome] || 'good';
+        const title = r.title || `${r.stat} 판정`;
+        const label = r.label || OUTCOME[r.outcome] || '';
+        const target = r.target || (r.dc ? `DC ${r.dc}` : '');
+        const dice = r.dice.map((d) => `<span class="die">${d}</span>`).join('');
+        const lines = [];
+        if (r.text) lines.push(`<div class="rolltext">${esc(r.text)}${r.after ? ` <span class="muted">(${esc(r.after)})</span>` : ''}</div>`);
+        if (r.damage) lines.push(`<div class="rolltext">⚔ 피해 ${esc(r.damage.expr)} = <b>${r.damage.total}</b>${r.damage.target ? ` → ${esc(r.damage.target)}` : ''}</div>`);
+        if (r.pendingChoice) lines.push('<div class="rolltext muted">선택을 기다리는 중…</div>');
+        if (r.chosen?.length) lines.push(`<div class="rolltext">✔ ${r.chosen.map(esc).join(' / ')}</div>`);
+        if (r.notes?.length) lines.push(`<div class="rolltext muted">${r.notes.map(esc).join(' · ')}</div>`);
+        if (r.why) lines.push(`<div class="rolltext muted">${esc(r.why)}</div>`);
+        return `<div class="msg" data-id="${m.id}"><div class="roll tier-${tier}${fresh ? ' fresh' : ''}">
+          <div class="rollhead"><span>🎲 <b>${esc(charName(r.who))}</b> · ${esc(title)}</span><span class="res">${esc(label)}</span></div>
+          <div class="rollbody">${dice}<span class="muted">${sign(r.mod)}</span> = <span class="total">${r.total}</span><span class="muted">${esc(target)}</span></div>
+          ${lines.join('')}</div></div>`;
       }
       return `<div class="msg"><div class="roll${fresh ? ' fresh' : ''}">🎲 <b>${esc(charName(r.who))}</b> ${esc(r.expr)} <span class="muted">${esc(r.detail)}</span> = <span class="d20">${r.total}</span></div></div>`;
     }
@@ -123,6 +140,12 @@ function msgHtml(m, fresh) {
       return `<div class="msg system${m.effect ? ' effect' : ''}${intro}">${esc(m.text)}</div>`;
     }
   }
+}
+
+function htmlToNode(html) {
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  return t.content.firstChild;
 }
 
 function appendMsg(m, fresh) {
@@ -146,7 +169,9 @@ function renderLog() {
 // ---------------------------------------------------------------------------
 // State
 
-const STATUS = { thinking: '생각 중', done: '✓ 선언', waiting: '차례 대기', rolling: '🎲 굴릴 차례', idle: '' };
+const STATUS = { thinking: '생각 중', done: '✓ 선언', waiting: '차례 대기', rolling: '🎲 굴릴 차례', choosing: '고르는 중', idle: '' };
+const advLabel = (a) => (a === 'advantage' ? ', 유리' : a === 'disadvantage' ? ', 불리' : '');
+const checkLabel = (p) => (p.move ? `${p.move}${p.stat && !['없음', '유대'].includes(p.stat) ? ` +${p.stat}` : ''}` : `${p.stat} 판정 (DC ${p.dc}${advLabel(p.adv)})`);
 
 function renderParty() {
   const box = $('#party');
@@ -178,24 +203,31 @@ function renderScene() {
     <p class="muted">${esc(c.premise)}${c.tone ? ` · ${esc(c.tone)}` : ''}</p>
     ${c.pitch ? `<div class="pre">${esc(c.pitch)}</div>` : ''}
     ${c.scene?.title ? `<h3>📍 ${esc(c.scene.title)}</h3><p>${esc(c.scene.description)}</p>` : ''}
+    ${c.foes?.length ? `<h3>적</h3>${c.foes.map((f) => `<div class="foe"><div><b>${esc(f.name)}</b> <span class="muted">${f.armor ? `갑옷 ${f.armor} · ` : ''}${f.damage ? `피해 ${esc(f.damage)}` : ''}</span></div>
+      <div class="hp${f.hp / f.maxHp <= 0.3 ? ' low' : ''}"><i style="width:${Math.round((f.hp / f.maxHp) * 100)}%"></i></div><div class="hptext">HP ${f.hp} / ${f.maxHp}${f.note ? ` · ${esc(f.note)}` : ''}</div></div>`).join('')}` : ''}
     ${c.summary ? `<h3>지금까지의 이야기</h3><div class="pre">${esc(c.summary)}</div>` : ''}
-    <h3>진행</h3><p>라운드 ${c.round} / 목표 ${c.targetRounds}</p>`;
+    <h3>진행</h3><p>${esc(c.rulesLabel || '')} · 라운드 ${c.round} / 목표 ${c.targetRounds}</p>`;
 }
 
 function renderSheets() {
   const box = $('#tab-sheets');
   const list = Object.values(chars());
   if (!list.length) { box.innerHTML = '<p class="muted">아직 캐릭터가 없어요.</p>'; return; }
-  box.innerHTML = list.map((ch) => `<div class="sheet">
+  box.innerHTML = list.map((ch) => {
+    const sh = ch.sheet || { badges: [], stats: Object.entries(ch.stats || {}).map(([label, v]) => ({ label, value: sign(v) })), lists: [] };
+    return `<div class="sheet">
     <h4>${esc(ch.name)} <span class="muted">· ${esc(seatOf(ch.key)?.label || '')}</span></h4>
     <div class="muted">${esc(ch.concept)}</div>
-    <div class="statgrid">${STATS.map((s) => `<div>${s}<b>${sign(ch.stats[s])}</b></div>`).join('')}</div>
+    ${sh.badges.length ? `<div class="badges">${sh.badges.map((b) => `<span>${esc(b)}</span>`).join('')}</div>` : ''}
+    <div class="statgrid">${sh.stats.map((s) => `<div class="${s.warn ? 'warn' : ''}">${esc(s.label)}<b>${esc(s.value)}</b>${s.sub ? `<small>${esc(s.sub)}</small>` : ''}</div>`).join('')}</div>
     <div>HP ${ch.hp} / ${ch.maxHp}${ch.conditions.length ? ` · ${ch.conditions.map(esc).join(', ')}` : ''}</div>
+    ${sh.lists.map((l) => `<div class="sublist"><b>${esc(l.title)}</b><ul>${l.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></div>`).join('')}
     ${ch.items.length ? `<div>🎒 ${ch.items.map(esc).join(', ')}</div>` : ''}
     ${ch.appearance ? `<div class="muted">외모: ${esc(ch.appearance)}</div>` : ''}
     ${ch.personality ? `<div class="muted">성격: ${esc(ch.personality)}</div>` : ''}
     ${ch.background ? `<div class="muted">배경: ${esc(ch.background)}</div>` : ''}
-  </div>`).join('');
+  </div>`;
+  }).join('');
 }
 
 async function renderSecrets() {
@@ -220,11 +252,18 @@ function renderTurnbar() {
   const c = state?.campaign;
   const bar = $('#turnbar');
   const parts = [];
+  const myChoices = (c?.pendingChoices || []).filter((p) => p.who === 'user');
   if (c && !c.paused) {
-    if (state.phase === 'roll' && c.pendingChecks.length) {
+    if (myChoices.length) {
+      for (const p of myChoices) {
+        parts.push(`<div class="choice" data-choice="${p.id}" data-count="${p.count}"><div>${esc(p.prompt)}</div>
+          <div class="opts">${p.options.map((o, i) => `<button type="button" class="opt" data-i="${i}">${esc(o)}</button>`).join('')}</div>
+          <button type="button" data-confirm="${p.id}" disabled>고르기</button></div>`);
+      }
+    } else if (state.phase === 'roll' && c.pendingChecks.length) {
       parts.push('🎲 판정이에요!');
       for (const p of c.pendingChecks) {
-        parts.push(`<button data-roll="${p.id}">${esc(p.stat)} 판정 (DC ${p.dc}${p.adv === 'advantage' ? ', 유리' : p.adv === 'disadvantage' ? ', 불리' : ''}) 굴리기</button>`);
+        parts.push(`<button data-roll="${p.id}">${esc(checkLabel(p))} 굴리기</button>`);
         if (p.why) parts.push(`<span class="muted">${esc(p.why)}</span>`);
       }
     } else if (state.phase === 'declare' && seatOf('user')?.status === 'waiting') {
@@ -254,9 +293,14 @@ function renderComposer() {
   if (!modes.querySelector('.on')) { mode = modes.querySelector('button').dataset.mode; modes.querySelector('button').classList.add('on'); }
   $('#passBtn').hidden = role !== 'player';
   $('#passBtn').disabled = !(state?.phase === 'declare' && seatOf('user')?.status === 'waiting');
-  const ph = { declare: role === 'gm' ? '장면을 서술하세요 · /check 카엘 민첩 15 · /hp 카엘 -3' : '"대사는 따옴표로" 행동은 그냥 쓰기 · /r 2d6+1 로 주사위', ooc: '테이블 잡담 (캐릭터가 아닌 플레이어로서)' };
+  const dw = c?.rules === 'dw';
+  const gmPh = dw ? '장면을 서술하세요 · /check 카엘 위험에 맞서기 민첩 · /dmg 카엘 d8 · /foe 고블린 6 1 d6' : '장면을 서술하세요 · /check 카엘 민첩 15 · /hp 카엘 -3';
+  const ph = { declare: role === 'gm' ? gmPh : `"대사는 따옴표로" 행동은 그냥 쓰기${dw ? ' · [무브]로 노리는 무브 표시' : ''} · /r 2d6+1`, ooc: '테이블 잡담 (캐릭터가 아닌 플레이어로서)' };
   $('#input').placeholder = ph[mode];
   $('#composer').style.display = c ? '' : 'none';
+  const moves = dw && role === 'player' && mode === 'declare' ? state.rulesets?.dw?.moves || [] : [];
+  $('#moveChips').innerHTML = moves.map((m) => `<button type="button" data-move="${esc(m.name)}">${esc(m.name)}</button>`).join('');
+  $('#moveChips').hidden = !moves.length;
 }
 
 function renderHeader() {
@@ -304,18 +348,49 @@ function openSetup() {
     ? `찾은 CLI: ${real.map((k) => names[k]).join(', ')}. 한 AI가 GM과 플레이어를 동시에 맡아도 돼요 (매번 따로 호출됩니다).`
     : 'AI CLI를 찾지 못해서 데모봇만 쓸 수 있어요.';
   $('#presets').innerHTML = PRESETS.map(([l, p]) => `<button type="button" data-premise="${esc(p)}">${l}</button>`).join('');
-  $('#statInputs').innerHTML = STATS.map((s, i) => `<div>${s}<input type="number" min="-1" max="3" value="${[1, 1, 1, 0, 1, 0][i]}" data-stat="${s}"></div>`).join('');
-  updateBudget();
+  const rs = state?.rulesets || {};
+  $('#rulesSeg').innerHTML = Object.values(rs).map((r, i) => `<label><input type="radio" name="rules" value="${r.id}"${(setupRules || 'd20') === r.id || (!rs[setupRules] && i === 0) ? ' checked' : ''}> ${esc(r.label)}</label>`).join('');
+  renderRuleFields();
   updateRole();
   $('#setupCancel').hidden = !state?.campaign;
   dlg.showModal();
 }
 
+let setupRules = 'd20';
+const ruleMeta = () => state?.rulesets?.[setupRules] || state?.rulesets?.d20;
+
+// Stat inputs, class and alignment for the chosen rule system.
+function renderRuleFields() {
+  setupRules = new FormData($('#setupForm')).get('rules') || 'd20';
+  const m = ruleMeta();
+  if (!m) return;
+  if (m.statKind === 'score') {
+    $('#statInputs').innerHTML = m.stats.map((s, i) => `<div>${s}<select data-stat="${s}">${m.scores.map((v) => `<option${v === m.statDefaults[i] ? ' selected' : ''}>${v}</option>`).join('')}</select></div>`).join('');
+  } else {
+    $('#statInputs').innerHTML = m.stats.map((s, i) => `<div>${s}<input type="number" min="${m.statMin}" max="${m.statMax}" value="${m.statDefaults[i]}" data-stat="${s}"></div>`).join('');
+  }
+  $('#ruleFields').hidden = !m.classes;
+  if (m.classes) {
+    $('#setupForm').charClass.innerHTML = m.classes.map((c) => `<option>${esc(c)}</option>`).join('');
+    $('#setupForm').charAlign.innerHTML = m.alignments.map((a) => `<option>${esc(a)}</option>`).join('');
+  }
+  updateBudget();
+}
+
 function updateBudget() {
-  const sum = [...document.querySelectorAll('[data-stat]')].reduce((a, i) => a + Number(i.value || 0), 0);
+  const m = ruleMeta();
+  if (!m) return;
+  const vals = [...document.querySelectorAll('[data-stat]')].map((i) => Number(i.value || 0));
   const el = $('#statBudget');
-  el.textContent = `(보정치 -1~+3, 합 ${sum} / ${BUDGET}${sum !== BUDGET ? ' — 서버가 맞춰 줘요' : ''})`;
-  el.classList.toggle('over', sum !== BUDGET);
+  if (m.statKind === 'score') {
+    const ok = [...vals].sort((a, b) => b - a).join() === m.scores.join();
+    el.textContent = `(점수 ${m.scores.join('·')}을 하나씩${ok ? '' : ' — 겹치면 서버가 순서대로 다시 나눠요'})`;
+    el.classList.toggle('over', !ok);
+  } else {
+    const sum = vals.reduce((a, b) => a + b, 0);
+    el.textContent = `(보정치 ${m.statMin}~+${m.statMax}, 합 ${sum} / ${m.budget}${sum !== m.budget ? ' — 서버가 맞춰 줘요' : ''})`;
+    el.classList.toggle('over', sum !== m.budget);
+  }
 }
 
 function updateRole() {
@@ -338,17 +413,18 @@ function submitSetup(e) {
     if (f.get('aiChar')) userChar = { hint: f.get('charHint') };
     else {
       if (!String(f.get('charName')).trim()) { toast('캐릭터 이름을 적어 주세요 (또는 AI에게 맡기기)'); return; }
+      const stats = Object.fromEntries([...document.querySelectorAll('[data-stat]')].map((i) => [i.dataset.stat, Number(i.value || 0)]));
       userChar = {
         name: f.get('charName'),
         concept: f.get('charConcept'),
         background: f.get('charBackground'),
-        stats: Object.fromEntries([...document.querySelectorAll('[data-stat]')].map((i) => [i.dataset.stat, Number(i.value || 0)])),
         items: String(f.get('charItems') || '').split(',').map((x) => x.trim()).filter(Boolean),
+        ...(ruleMeta()?.statKind === 'score' ? { scores: stats, class: f.get('charClass'), alignment: f.get('charAlign') } : { stats }),
       };
     }
   }
   api('/api/campaign', {
-    premise: f.get('premise'), tone: f.get('tone'), targetRounds: Number(f.get('targetRounds')),
+    rules: f.get('rules'), premise: f.get('premise'), tone: f.get('tone'), targetRounds: Number(f.get('targetRounds')),
     userName: f.get('userName'), userRole: role, gm: f.get('gm'), players, userChar,
   });
   secretsOpen = false;
@@ -363,7 +439,11 @@ function submitSetup(e) {
 $('#newBtn').onclick = () => openSetup();
 $('#setupCancel').onclick = () => $('#setup').close();
 $('#setupForm').addEventListener('submit', submitSetup);
-$('#setupForm').addEventListener('change', (e) => { if (e.target.name === 'userRole' || e.target.name === 'aiChar') updateRole(); });
+$('#setupForm').addEventListener('change', (e) => {
+  if (e.target.name === 'userRole' || e.target.name === 'aiChar') updateRole();
+  if (e.target.name === 'rules') renderRuleFields();
+  if (e.target.dataset.stat) updateBudget();
+});
 $('#setupForm').addEventListener('input', (e) => { if (e.target.dataset.stat) updateBudget(); });
 $('#presets').addEventListener('click', (e) => {
   const p = e.target.closest('[data-premise]');
@@ -380,7 +460,31 @@ $('#modes').addEventListener('click', (e) => {
 });
 $('#turnbar').addEventListener('click', (e) => {
   const b = e.target.closest('[data-roll]');
-  if (b) { b.disabled = true; api('/api/roll', { id: b.dataset.roll }); }
+  if (b) { b.disabled = true; api('/api/roll', { id: b.dataset.roll }); return; }
+  const opt = e.target.closest('.opt');
+  if (opt) {
+    const box = opt.closest('[data-choice]');
+    const count = Number(box.dataset.count);
+    opt.classList.toggle('on');
+    const on = [...box.querySelectorAll('.opt.on')];
+    // Picking past the limit drops the earliest pick.
+    if (on.length > count) on.find((x) => x !== opt).classList.remove('on');
+    box.querySelector('[data-confirm]').disabled = box.querySelectorAll('.opt.on').length !== count;
+    return;
+  }
+  const ok = e.target.closest('[data-confirm]');
+  if (ok) {
+    const box = ok.closest('[data-choice]');
+    ok.disabled = true;
+    api('/api/choose', { id: ok.dataset.confirm, picks: [...box.querySelectorAll('.opt.on')].map((x) => Number(x.dataset.i)) });
+  }
+});
+$('#moveChips').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-move]');
+  if (!b) return;
+  const input = $('#input');
+  input.value = `[${b.dataset.move}] ${input.value.replace(/^\s*\[[^\]]*\]\s*/, '')}`;
+  input.focus();
 });
 $('#composer').addEventListener('submit', async (e) => {
   e.preventDefault();

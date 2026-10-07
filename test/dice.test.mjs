@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDice, rollDice, abilityCheck, normalizeStats, setRng, STATS, STAT_BUDGET } from '../lib/dice.mjs';
+import { parseDice, rollDice, setRng } from '../lib/dice.mjs';
+import { abilityCheck, normalizeStats } from '../lib/rules/d20.mjs';
+import d20 from '../lib/rules/d20.mjs';
 
 test('parseDice accepts common expressions and rejects junk', () => {
   for (const ok of ['d20', '2d6+1', '4d6kh3', '1d8 + 2 - 1', '3', '2d10kl1']) assert.ok(parseDice(ok), ok);
@@ -15,7 +17,7 @@ test('rollDice totals with scripted dice', () => {
   setRng(null);
 });
 
-test('abilityCheck outcomes, crits and advantage', () => {
+test('d20 abilityCheck outcomes, crits and advantage', () => {
   setRng(() => 20);
   assert.equal(abilityCheck({ mod: -1, dc: 30 }).outcome, 'critical');
   setRng(() => 1);
@@ -30,11 +32,11 @@ test('abilityCheck outcomes, crits and advantage', () => {
   setRng(null);
 });
 
-test('normalizeStats clamps and hits the budget', () => {
+test('d20 normalizeStats clamps and hits the budget', () => {
   for (const input of [{}, { 근력: 9, 민첩: 9, 체력: 9 }, { 근력: -5 }, { 지능: 3, 감각: 1 }]) {
     const s = normalizeStats(input);
-    assert.equal(STATS.reduce((a, k) => a + s[k], 0), STAT_BUDGET);
-    for (const k of STATS) assert.ok(s[k] >= -1 && s[k] <= 3);
+    assert.equal(d20.STATS.reduce((a, k) => a + s[k], 0), 4);
+    for (const k of d20.STATS) assert.ok(s[k] >= -1 && s[k] <= 3);
   }
   assert.deepEqual(normalizeStats({ 지능: 3, 감각: 1 }), { 근력: 0, 민첩: 0, 체력: 0, 지능: 3, 감각: 1, 매력: 0 });
 });

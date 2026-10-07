@@ -7,6 +7,10 @@ import path from 'node:path';
 import { Backends } from '../lib/backends.mjs';
 import { Store } from '../lib/store.mjs';
 import { Engine } from '../lib/engine.mjs';
+import { setRng } from '../lib/dice.mjs';
+
+// Scripted dice first, then real ones.
+const scripted = (seq) => (sides) => (seq.length ? seq.shift() : 1 + Math.floor(Math.random() * sides));
 
 function table(extra = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wdyd-'));
@@ -93,5 +97,60 @@ test('GM failure pauses the table and resume retries', async () => {
   engine.setPaused(false);
   await until(() => engine.c.phase === 'declare');
   assert.equal(engine.c.error, null);
+  engine.setPaused(true);
+});
+
+test('dungeon world: spectator campaign with bonds, foes and moves runs to the end', async () => {
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock', 'mock', 'mock'], targetRounds: 5 });
+  await until(() => engine.c.phase === 'ended', 10000);
+  const c = engine.c;
+  for (const ch of Object.values(c.characters)) {
+    assert.ok(ch.class && ch.scores && ch.damage, 'dw sheet');
+    assert.ok(ch.bonds.length > 0, 'bonds step ran');
+  }
+  assert.ok(c.log.some((m) => m.type === 'roll' && m.roll.move), 'moves were rolled');
+  assert.equal(c.pendingChoices.length, 0);
+  assert.ok(engine.view().characters.p1.sheet.stats.length === 6);
+});
+
+test('dungeon world: the human picks 7-9 options, damage moves hit foes, 0 HP rolls last breath', async () => {
+  const { engine } = table();
+  engine.newCampaign({
+    rules: 'dw', premise: '던전', userRole: 'player', players: ['mock'], targetRounds: 30,
+    userChar: { name: '아린', class: '성기사', scores: { 근력: 15, 민첩: 8, 체력: 16, 지능: 9, 지혜: 13, 매력: 12 } },
+  });
+  await until(() => engine.c.phase === 'declare' && engine.c.declared.p1);
+  const c = engine.c;
+  assert.equal(c.characters.user.maxHp, 10 + 16);
+  assert.ok(c.foes.length, 'opening registered a foe');
+
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, ...rest) => (kind === 'adjudicate'
+    ? { ok: true, text: JSON.stringify({ checks: [{ who: 'user', move: '상황 파악' }, { who: 'p1', move: '난타전', target: '종탑의 그림자' }] }) }
+    : orig(seat, kind, ...rest));
+  setRng(scripted([/* p1 hack&slash: 12+ */ 6, 6, /* damage */ 4, /* user discern: 7 + 지혜+1 = 8 */ 3, 4]));
+  engine.userPost('declare', '[상황 파악] 아린은 녀석의 약점을 찾는다');
+  await until(() => c.phase === 'roll');
+  // p1's hack and slash already hit the foe (12+ → damage d-die = 4)
+  assert.ok(c.log.some((m) => m.type === 'system' && m.text.includes('종탑의 그림자 HP')), 'foe took damage');
+  const [pc] = c.pendingChecks;
+  engine.backends.chat = orig;
+  engine.userRollCheck(pc.id);
+  const choice = c.pendingChoices.find((p) => p.who === 'user');
+  assert.equal(choice.count, 1);
+  assert.match(engine.userChoose(choice.id, [0, 1]), /정확히 1개/);
+  assert.equal(engine.userChoose(choice.id, [2]), null);
+  setRng(null);
+  await until(() => c.round === 2 && c.phase === 'declare');
+  assert.ok(c.log.some((m) => m.choice && m.text.includes('무엇을 조심해야 하나?')));
+
+  setRng(scripted([1, 1]));
+  engine.applyEffects([{ who: 'user', hp: -99 }]);
+  setRng(null);
+  assert.equal(c.characters.user.hp, 0);
+  const lb = c.log.filter((m) => m.type === 'roll').at(-1);
+  assert.equal(lb.roll.move, '마지막 숨');
+  assert.ok(c.characters.user.conditions.includes('사망'));
   engine.setPaused(true);
 });

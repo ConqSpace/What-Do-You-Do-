@@ -26,6 +26,7 @@
       <div class="log" id="log"></div>
       <div class="turnbar" id="turnbar" hidden></div>
       <form class="composer" id="composer" autocomplete="off">
+        <div class="chips" id="moveChips" hidden></div>
         <div class="modes" id="modes">
           <button type="button" data-mode="declare" class="on">🗡 선언</button>
           <button type="button" data-mode="ooc">💬 잡담</button>
@@ -66,11 +67,18 @@
           <li><b>잡담</b> 모드는 캐릭터가 아닌 플레이어로서 하는 말(OOC)</li>
           <li><code>/r 2d6+1</code>, <code>/r 4d6kh3</code> — 자유 주사위</li>
         </ul>
+        <h3>던전 월드</h3>
+        <ul>
+          <li>입력창 위 무브 버튼을 누르면 <code>[상황 파악]</code>처럼 노리는 무브가 붙어요. 판정할지는 GM이 정해요.</li>
+          <li>2d6 + 능력치: 10+ 강한 성공 · 7–9 부분 성공 · 6- 실패(경험치 +1). 7–9에 고를 게 있으면 버튼이 떠요.</li>
+          <li>피해 무브는 서버가 클래스 피해 주사위를 굴려 적에게 바로 깎아요. HP 0이면 마지막 숨을 굴려요.</li>
+        </ul>
         <h3>GM으로 참가했다면</h3>
         <ul>
           <li>입력이 곧 서술이고, 보내면 다음 라운드가 시작돼요.</li>
           <li><code>/check 카엘 민첩 15 [유리|불리]</code></li>
-          <li><code>/hp 카엘 -3</code> · <code>/scene 제목 | 설명</code> · <code>/end</code></li>
+          <li><code>/hp 카엘 -3</code> · <code>/dmg 카엘 d8</code> · <code>/scene 제목 | 설명</code> · <code>/end</code></li>
+          <li>던전 월드: <code>/check 카엘 위험에 맞서기 민첩</code>, <code>/check 카엘 난타전 고블린</code>, <code>/foe 고블린 6 1 d6</code></li>
         </ul>
       </div>
     </aside>
@@ -79,6 +87,8 @@
   <dialog id="setup">
     <form id="setupForm" method="dialog">
       <h2>새 캠페인</h2>
+      <label>룰</label>
+      <div class="seg" id="rulesSeg"></div>
       <label>전제 (어떤 이야기?)</label>
       <div class="presets" id="presets"></div>
       <textarea name="premise" rows="3" required placeholder="예: 안개 낀 항구 도시에서 연쇄 실종 사건을 쫓는 코즈믹 호러"></textarea>
@@ -106,6 +116,10 @@
           <div class="row">
             <div class="narrow"><label>이름</label><input name="charName" placeholder="카엘"></div>
             <div><label>콘셉트</label><input name="charConcept" placeholder="빚에 쫓기는 몰락 귀족 검사"></div>
+          </div>
+          <div class="row" id="ruleFields" hidden>
+            <div><label>클래스</label><select name="charClass"></select></div>
+            <div><label>성향</label><select name="charAlign"></select></div>
           </div>
           <label>외모 · 성격 · 배경 (자유)</label>
           <input name="charBackground" placeholder="짧은 흑발, 무뚝뚝하지만 정이 많다. 사라진 동생을 찾고 있다.">

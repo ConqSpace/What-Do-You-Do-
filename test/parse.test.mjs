@@ -12,7 +12,8 @@ test('extractJson finds the object inside chatter and fences', () => {
 });
 
 test('splitDeclaration separates quoted speech from action', () => {
-  assert.deepEqual(splitDeclaration('"여기서 기다려." 카엘은 문을 살핀다'), { say: '여기서 기다려.', action: '카엘은 문을 살핀다' });
-  assert.deepEqual(splitDeclaration('문을 연다'), { say: '', action: '문을 연다' });
-  assert.deepEqual(splitDeclaration('“누구냐!”'), { say: '누구냐!', action: '' });
+  assert.deepEqual(splitDeclaration('"여기서 기다려." 카엘은 문을 살핀다'), { say: '여기서 기다려.', action: '카엘은 문을 살핀다', move: '' });
+  assert.deepEqual(splitDeclaration('[상황 파악] 카엘은 주위를 살핀다'), { say: '', action: '카엘은 주위를 살핀다', move: '상황 파악' });
+  assert.deepEqual(splitDeclaration('문을 연다'), { say: '', action: '문을 연다', move: '' });
+  assert.deepEqual(splitDeclaration('“누구냐!”'), { say: '누구냐!', action: '', move: '' });
 });
