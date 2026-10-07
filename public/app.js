@@ -256,7 +256,7 @@ function renderStory() {
     ${c.foes?.length ? `<h3>적</h3>${c.foes.map((f) => `<div class="foe"><div><b>${esc(f.name)}</b> <span class="muted">${[f.armor ? `갑옷 ${f.armor}` : '', f.damage ? `피해 ${esc(f.damage)}` : '', f.attack ? `공격 ${f.attack}` : '', f.dodge ? `회피 ${f.dodge}` : ''].filter(Boolean).join(' · ')}</span></div>
       ${bar({ value: f.hp, max: f.maxHp })}<div class="muted">HP ${f.hp} / ${f.maxHp}${f.note ? ` · ${esc(f.note)}` : ''}</div></div>`).join('')}` : ''}
     ${c.summary ? `<h3>지금까지의 이야기</h3><div class="pre">${esc(c.summary)}</div>` : ''}
-    <h3>진행</h3><p>라운드 ${c.round} / 목표 ${c.targetRounds}</p>`;
+    <h3>진행</h3><p>라운드 ${c.round}</p>`;
 }
 
 function sheetHtml(ch, full) {
@@ -613,7 +613,7 @@ function submitSetup() {
     }
   }
   api('/api/campaign', {
-    rules: f.get('rules'), premise: f.get('premise'), tone: f.get('tone'), targetRounds: Number(f.get('targetRounds')),
+    rules: f.get('rules'), premise: f.get('premise'), tone: f.get('tone'),
     userName: f.get('userName'), userRole: r, gm: f.get('gm'), players, userChar,
   });
   secretsOpen = false;

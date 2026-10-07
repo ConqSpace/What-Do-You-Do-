@@ -31,7 +31,7 @@ async function until(fn, ms = 5000) {
 
 test('spectator campaign runs from prep to the ending', async () => {
   const { engine } = table();
-  engine.newCampaign({ premise: '테스트 모험', userRole: 'spectator', players: ['mock', 'mock', 'mock'], targetRounds: 4 });
+  engine.newCampaign({ premise: '테스트 모험', userRole: 'spectator', players: ['mock', 'mock', 'mock'] });
   await until(() => engine.c.phase === 'ended', 10000);
   const c = engine.c;
   assert.equal(Object.keys(c.characters).length, 3);
@@ -46,7 +46,7 @@ test('spectator campaign runs from prep to the ending', async () => {
 test('human player: GM waits for the declaration and the human rolls their own checks', async () => {
   const { engine } = table();
   engine.newCampaign({
-    premise: '테스트', userRole: 'player', players: ['mock', 'mock'], targetRounds: 30,
+    premise: '테스트', userRole: 'player', players: ['mock', 'mock'],
     userChar: { name: '아린', concept: '견습 기사', stats: { 근력: 3, 민첩: 3 }, items: ['검'] },
   });
   assert.equal(engine.c.characters.user.name, '아린');
@@ -104,7 +104,7 @@ test('GM failure pauses the table and resume retries', async () => {
 
 test('dungeon world: spectator campaign with bonds, foes and moves runs to the end', async () => {
   const { engine } = table();
-  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock', 'mock', 'mock'], targetRounds: 5 });
+  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock', 'mock', 'mock'] });
   await until(() => engine.c.phase === 'ended', 10000);
   const c = engine.c;
   for (const ch of Object.values(c.characters)) {
@@ -119,7 +119,7 @@ test('dungeon world: spectator campaign with bonds, foes and moves runs to the e
 test('dungeon world: the human picks 7-9 options, damage moves hit foes, 0 HP rolls last breath', async () => {
   const { engine } = table();
   engine.newCampaign({
-    rules: 'dw', premise: '던전', userRole: 'player', players: ['mock'], targetRounds: 30,
+    rules: 'dw', premise: '던전', userRole: 'player', players: ['mock'],
     userChar: { name: '아린', class: '성기사', scores: { 근력: 15, 민첩: 8, 체력: 16, 지능: 9, 지혜: 13, 매력: 12 } },
   });
   await until(() => engine.c.phase === 'declare' && engine.c.declared.p1);
@@ -159,7 +159,7 @@ test('dungeon world: the human picks 7-9 options, damage moves hit foes, 0 HP ro
 
 test('call of cthulhu: spectator campaign with combat, sanity and clues runs to the end', async () => {
   const { engine } = table();
-  engine.newCampaign({ rules: 'coc7', premise: '항구 도시 실종 사건', userRole: 'spectator', players: ['mock', 'mock'], targetRounds: 6 });
+  engine.newCampaign({ rules: 'coc7', premise: '항구 도시 실종 사건', userRole: 'spectator', players: ['mock', 'mock'] });
   await until(() => engine.c.phase === 'ended', 10000);
   const c = engine.c;
   for (const ch of Object.values(c.characters)) {
@@ -173,7 +173,7 @@ test('call of cthulhu: spectator campaign with combat, sanity and clues runs to 
 test('call of cthulhu: the human pushes a failed roll with a reason', async () => {
   const { engine } = table();
   engine.newCampaign({
-    rules: 'coc7', premise: 'x', userRole: 'player', players: ['mock'], targetRounds: 30,
+    rules: 'coc7', premise: 'x', userRole: 'player', players: ['mock'],
     userChar: { name: '오필리아', occupation: '간호사', stats: { 근력: 45, 건강: 60, 크기: 50, 민첩: 70, 외모: 60, 지능: 75, 정신: 65, 교육: 70 }, skills: '응급처치 60' },
   });
   await until(() => engine.c.phase === 'declare' && engine.c.declared.p1);
@@ -204,7 +204,7 @@ test('call of cthulhu: the human pushes a failed roll with a reason', async () =
 
 test('fact ledger: secrets and other players\' whispers never reach a player\'s prompt', async () => {
   const { engine } = table();
-  engine.newCampaign({ premise: '장부 테스트', userRole: 'spectator', players: ['mock', 'mock'], targetRounds: 30 });
+  engine.newCampaign({ premise: '장부 테스트', userRole: 'spectator', players: ['mock', 'mock'] });
   await until(() => engine.c.phase === 'declare');
   const c = engine.c;
   assert.ok(new Ledger(c.facts).list.some((f) => f.p === '비밀'), 'worldbuild filled the ledger');
@@ -231,7 +231,7 @@ test('fact ledger: secrets and other players\' whispers never reach a player\'s 
 
 test('fact ledger: a clue told to one character is announced only to them', async () => {
   const { engine } = table();
-  engine.newCampaign({ premise: '단서 테스트', userRole: 'spectator', players: ['mock', 'mock'], targetRounds: 30 });
+  engine.newCampaign({ premise: '단서 테스트', userRole: 'spectator', players: ['mock', 'mock'] });
   await until(() => engine.c.phase === 'declare');
   engine.setPaused(true);
   const c = engine.c;
@@ -247,7 +247,7 @@ test('fact ledger: a clue told to one character is announced only to them', asyn
 
 test('rules: a firing reaches the GM\'s next prompt, an ending tells the GM to close, narration clears it', async () => {
   const { engine } = table();
-  engine.newCampaign({ premise: '규칙 테스트', userRole: 'spectator', players: ['mock'], targetRounds: 30 });
+  engine.newCampaign({ premise: '규칙 테스트', userRole: 'spectator', players: ['mock'] });
   await until(() => engine.c.phase === 'declare');
   engine.setPaused(true);
   const c = engine.c;
@@ -274,7 +274,7 @@ test('rules: a firing reaches the GM\'s next prompt, an ending tells the GM to c
 
 test('clue paths: the GM sees each conclusion\'s paths and is warned once when one closes', async () => {
   const { engine } = table();
-  engine.newCampaign({ premise: '단서 경로', userRole: 'spectator', players: ['mock', 'mock'], targetRounds: 30 });
+  engine.newCampaign({ premise: '단서 경로', userRole: 'spectator', players: ['mock', 'mock'] });
   await until(() => engine.c.phase === 'declare');
   engine.setPaused(true);
   const c = engine.c;

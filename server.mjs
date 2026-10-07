@@ -24,7 +24,6 @@ const DEFAULT_CFG = {
   historyWindow: 40, // log lines each prompt sees
   declareMode: 'sequential', // 'sequential': AI players declare one by one and see each other / 'parallel'
   waitForUser: true, // the GM waits for the human player's declaration each round
-  targetRounds: 12,
   autoPauseRounds: 8, // spectator: pause after this many rounds without a word from the human (0 = never)
   mockDelayMs: 700,
   backends: {

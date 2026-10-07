@@ -4,7 +4,6 @@
   "demo": false,
   "declareMode": "sequential",
   "waitForUser": true,
-  "targetRounds": 12,
   "autoPauseRounds": 8,
   "maxInFlight": 3,
   "historyWindow": 40,
