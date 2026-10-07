@@ -241,6 +241,28 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .conds-list { display: flex; flex-wrap: wrap; gap: 4px; }
 .conds-list span { font-size: 12px; padding: 1px 8px; border-radius: 6px; background: var(--surface2); color: var(--muted); }
 .conds-list span.ok { color: var(--good); }
+.concl { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.concl.deducible { border-color: color-mix(in srgb, var(--good) 55%, var(--line)); }
+.concl.blocked { border-color: color-mix(in srgb, var(--bad) 60%, var(--line)); }
+.concl .ch { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.concl .ch b { font-size: 15px; }
+.concl .badge { font-size: 11px; font-weight: 700; padding: 1px 9px; border-radius: 99px; background: var(--surface2); color: var(--muted); }
+.concl.deducible .badge { background: var(--good); color: var(--bg); }
+.concl.blocked .badge { background: var(--bad); color: var(--bg); }
+.concl .ct { color: color-mix(in srgb, var(--text) 85%, var(--bg)); }
+.meter { display: flex; gap: 3px; }
+.meter i { flex: 1; height: 6px; border-radius: 3px; background: var(--line2); }
+.meter i.known { background: var(--good); }
+.meter i.lost { background: var(--bad); opacity: .7; }
+.cluepath { list-style: none; margin: 4px 0 0 6px; padding: 0 0 0 14px; border-left: 2px solid var(--line2); display: flex; flex-direction: column; gap: 8px; }
+.cluepath li { position: relative; display: flex; gap: 8px; }
+.cluepath .dot { position: absolute; left: -21px; top: 4px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line2); background: var(--surface); }
+.cluepath li.known .dot { background: var(--good); border-color: var(--good); }
+.cluepath li.lost .dot, .cluepath li.missing .dot { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 35%, var(--surface)); }
+.cluepath li.lost b, .cluepath li.missing b { text-decoration: line-through; color: var(--muted); }
+.cluepath .st { font-size: 11px; color: var(--muted); }
+.cluepath li.known .st { color: var(--good); }
+.cluepath .src { font-size: 12px; color: var(--san); }
 .factgroup h4 { margin: 10px 0 2px; font-size: 13px; color: var(--muted); }
 .system.intro { text-align: left; background: var(--surface2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; color: var(--text); font-size: 14px; }
 

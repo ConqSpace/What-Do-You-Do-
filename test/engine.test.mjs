@@ -251,6 +251,9 @@ test('rules: a firing reaches the GM\'s next prompt, an ending tells the GM to c
   await until(() => engine.c.phase === 'declare');
   engine.setPaused(true);
   const c = engine.c;
+  // The demo bot plays fast and brings its own rules; start this test from a clean slate.
+  c.facts.rules = [];
+  c.facts.triggered = [];
   engine.applyFacts({
     facts: { assert: ['시계(파국) = 5/6'] },
     rules: { add: [{ name: '파국', when: ['시계(파국) >= 6'], then: ['사건(파국, 탑이 무너진다)'], ending: true, note: '나쁜 결말' }] },
@@ -267,4 +270,29 @@ test('rules: a firing reaches the GM\'s next prompt, an ending tells the GM to c
   assert.equal(c.phase, 'ended');
   assert.equal(new Ledger(c.facts).triggered.length, 0, 'narrated, cleared');
   assert.ok(engine.secrets().rules.find((r) => r.name === '파국').fired.length);
+});
+
+test('clue paths: the GM sees each conclusion\'s paths and is warned once when one closes', async () => {
+  const { engine } = table();
+  engine.newCampaign({ premise: '단서 경로', userRole: 'spectator', players: ['mock', 'mock'], targetRounds: 30 });
+  await until(() => engine.c.phase === 'declare');
+  engine.setPaused(true);
+  const c = engine.c;
+  c.facts.rules = [];
+  engine.applyFacts({ facts: { assert: ['결론(범인, 말로우)', '근거(범인, 장부)', '근거(범인, 비늘)', '단서(장부, 명단)', '단서(비늘, 은회색)', '출처(장부, 제7창고)'] } });
+  let gm = adjudicateTurn(c);
+  assert.match(gm, /\[결론\] 범인 \(말로우\): 확보 0 · 열림 2 \/ 필요 2 → 진행 중/);
+  assert.match(gm, /○ 장부 열림 ← 제7창고/);
+  assert.match(gm, /근거 단서가 2개뿐/);
+  const warnings = () => c.log.filter((m) => m.ledger && /길이 막혔다/.test(m.text)).length;
+  engine.applyFacts({ facts: { assert: ['상태(장부, 소실)'] } });
+  assert.equal(warnings(), 1);
+  engine.applyFacts({ facts: { assert: ['상태(톰, 실종)'] } });
+  assert.equal(warnings(), 1, 'warned once');
+  gm = adjudicateTurn(c);
+  assert.match(gm, /→ 막힘/);
+  assert.match(gm, /⚠ 막혔다/);
+  const secret = engine.secrets().conclusions.find((x) => x.name === '범인');
+  assert.equal(secret.blocked, true);
+  assert.equal(secret.support.find((s) => s.clue === '장부').status, 'lost');
 });

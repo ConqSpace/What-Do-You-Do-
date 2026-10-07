@@ -306,7 +306,21 @@ async function renderSecrets() {
   const groups = {};
   for (const f of s.facts || []) (groups[f.p] ??= []).push(f);
   const table = Object.entries(groups).map(([p, fs]) => `<div class="factgroup"><h4>${esc(p)}</h4><ul class="facts">${fs.map((f) => `<li><span>${esc(f.text)}</span><span class="who ${f.known === '비밀' ? 'secret' : f.known === '모두' ? 'all' : 'some'}">${esc(f.known)}</span></li>`).join('')}</ul></div>`).join('');
-  box.innerHTML = `<h3>진실 표 (사실 장부)</h3>${table || '<p class="muted">아직 비어 있어요.</p>'}`
+  const graph = (s.conclusions || []).map((a) => {
+    const state = a.deducible ? 'deducible' : a.blocked ? 'blocked' : 'progress';
+    const word = { deducible: '추론 가능', blocked: '막힘', progress: '진행 중' }[state];
+    const seg = (n, cls) => Array.from({ length: n }, () => `<i class="${cls}"></i>`).join('');
+    return `<section class="concl ${state}">
+      <div class="ch"><b>${esc(a.name)}</b><span class="badge">${word}</span></div>
+      <div class="ct">${esc(a.text)}</div>
+      <div class="meter" aria-label="확보 ${a.known}, 열림 ${a.open}, 소실 ${a.lost}">${seg(a.known, 'known')}${seg(a.open, 'open')}${seg(a.lost + a.missing, 'lost')}</div>
+      <div class="muted">확보 ${a.known} · 열림 ${a.open}${a.lost ? ` · 소실 ${a.lost}` : ''} / 필요 ${a.need}${a.thin ? ' · 근거가 3개 미만' : ''}</div>
+      <ul class="cluepath">${a.support.map((c) => `<li class="${c.status}"><span class="dot" aria-hidden="true"></span><div><b>${esc(c.clue)}</b> <span class="st">${{ known: '확보', open: '열림', lost: '소실', missing: '장부에 없음' }[c.status]}${c.who.length ? ` · ${c.who.map(esc).join(', ')}` : ''}</span>
+        ${c.text ? `<div class="muted">${esc(c.text)}</div>` : ''}${c.sources.length ? `<div class="src">← ${c.sources.map(esc).join(', ')}</div>` : ''}</div></li>`).join('')}</ul>
+    </section>`;
+  }).join('');
+  box.innerHTML = (graph ? `<h3>단서 그래프</h3>${graph}` : '')
+    + `<h3>진실 표 (사실 장부)</h3>${table || '<p class="muted">아직 비어 있어요.</p>'}`
     + (s.rules?.length ? `<h3>규칙</h3><ul class="rules">${s.rules.map((r) => `<li class="${r.fired.length ? 'fired' : ''}">
         <div class="rh"><b>${esc(r.name)}</b>${r.ending ? '<span class="who secret">결말</span>' : ''}${r.repeat ? '<span class="who">반복</span>' : ''}<span class="who ${r.fired.length ? 'all' : ''}">${r.fired.length ? `발동 · 라운드 ${r.fired.join(', ')}` : '대기'}</span></div>
         <div class="conds-list">${r.conds.map((t) => `<span class="${t.ok ? 'ok' : ''}">${t.ok ? '✓' : '✗'} ${esc(t.text)}${t.now !== undefined ? ` (지금 ${t.now})` : ''}</span>`).join('')}</div>
