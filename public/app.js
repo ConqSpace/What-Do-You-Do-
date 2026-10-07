@@ -1,25 +1,38 @@
-// Table UI: one SSE stream (init → msg / state), a handful of POSTs.
+// Table UI: one SSE stream (init → msg / update / state), a handful of POSTs.
+// Mobile first: avatar strip, log, composer; the story panel is a drawer, rolls and
+// choices come up in a bottom sheet, a character sheet is a full page.
 
 const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
 // Old d20 rolls (before rule modules) carried only `outcome`.
 const OUTCOME = { critical: '대성공', success: '성공', failure: '실패', fumble: '대실패' };
 const OLD_TIER = { critical: 'crit', success: 'good', failure: 'bad', fumble: 'fumble' };
-const PHASE = { setup: '준비 전', prep: '캠페인 준비 중', declare: '선언', resolve: 'GM 판정 중', roll: '주사위 · 선택', 'gm-wait': 'GM 서술 대기', ended: '종료' };
+const PHASE = { setup: '준비 전', prep: '캠페인 준비 중', declare: '선언', resolve: '판정 중', roll: '주사위 · 선택', 'gm-wait': 'GM 서술 대기', ended: '종료' };
+const STATUS = { thinking: '생각 중', done: '✓ 선언', waiting: '차례 대기', rolling: '굴릴 차례', choosing: '고르는 중', idle: '' };
+const DICE = { d20: 'd20', dw: '2d6', coc7: 'd100' };
 const PRESETS = [
-  ['🏰 판타지', '국경 마을에서 사람들이 하나둘 사라지는 정통 판타지 모험'],
-  ['🐙 코즈믹 호러', '1920년대 안개 낀 항구 도시, 바다에서 건져 올린 이상한 조각상과 연쇄 실종 사건'],
-  ['🌃 사이버펑크', '2089년 네오서울, 거대 기업의 데이터를 훔치는 의뢰를 받은 해커와 용병들'],
-  ['⚔ 무협', '강호를 뒤흔든 비급이 사라졌다. 정파와 사파가 모두 노리는 객잔에서 벌어지는 이야기'],
-  ['🏫 학원 미스터리', '폐교 직전의 고등학교, 밤마다 불이 켜지는 옛 음악실의 비밀을 파헤치는 학생들'],
-  ['🚀 스페이스 오페라', '고장 난 화물선을 타고 은하 변두리를 떠도는 승무원들, 화물칸에서 무언가 깨어난다'],
+  ['판타지', '국경 마을에서 사람들이 하나둘 사라지는 정통 판타지 모험'],
+  ['코즈믹 호러', '1920년대 안개 낀 항구 도시, 바다에서 건져 올린 이상한 조각상과 연쇄 실종 사건'],
+  ['던전 크롤', '고블린 떼가 점령한 드워프 폐광에서 사라진 대장장이를 구출하라'],
+  ['사이버펑크', '2089년 네오서울, 거대 기업의 데이터를 훔치는 의뢰를 받은 해커와 용병들'],
+  ['무협', '강호를 뒤흔든 비급이 사라졌다. 정파와 사파가 모두 노리는 객잔에서 벌어지는 이야기'],
+  ['학원 미스터리', '폐교 직전의 고등학교, 밤마다 불이 켜지는 옛 음악실의 비밀을 파헤치는 학생들'],
 ];
+const ICON = {
+  pause: '<svg viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>',
+};
+const mobile = () => matchMedia('(max-width: 899px)').matches;
 
 let state = null;
-const chars = () => state?.characters || {};
 let log = [];
 let mode = 'declare';
-let secretsOpen = false;
 let lastRole = null;
+let secretsOpen = false;
+let sheetKey = null; // character shown on the sheet page
+let actionKey = ''; // what the action sheet currently shows (keeps selections across redraws)
+const chars = () => state?.characters || {};
+const camp = () => state?.campaign;
 
 // ---------------------------------------------------------------------------
 // API
@@ -37,7 +50,7 @@ function toast(text) {
   b.className = 'banner info';
   b.hidden = false;
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => { renderBanner(); }, 3500);
+  toast.t = setTimeout(renderBanner, 3500);
 }
 
 // ---------------------------------------------------------------------------
@@ -50,7 +63,7 @@ function connect() {
     state = d.state;
     log = d.log;
     renderAll();
-    if (!state.campaign) openSetup();
+    if (!camp()) openSetup();
   });
   es.addEventListener('state', (e) => {
     state = JSON.parse(e.data);
@@ -60,7 +73,7 @@ function connect() {
     const m = JSON.parse(e.data);
     const i = log.findIndex((x) => x.id === m.id);
     if (i >= 0) log[i] = m;
-    document.querySelector(`#log [data-id="${m.id}"]`)?.replaceWith(htmlToNode(msgHtml(m, false)));
+    $(`#log [data-id="${m.id}"]`)?.replaceWith(htmlToNode(msgHtml(m, false)));
   });
   es.addEventListener('msg', (e) => {
     const m = JSON.parse(e.data);
@@ -71,84 +84,97 @@ function connect() {
 }
 
 // ---------------------------------------------------------------------------
-// Rendering helpers
+// Helpers
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sign = (n) => (n >= 0 ? `+${n}` : `${n}`);
+const gmName = () => camp()?.gmName || 'GM';
 
 function seatOf(key) { return state?.seats?.find((s) => s.key === key); }
 function colorOf(key) {
   const s = seatOf(key);
-  if (!s || s.backend === 'human') return '#c58d2c';
-  return state.backends[s.backend]?.color || '#777';
+  if (!s || s.backend === 'human') return '#8a6a2a';
+  return state.backends[s.backend]?.color || '#5e5e66';
 }
 function charName(key) {
-  if (key === 'gm') return 'GM';
-  if (key === 'user' && !chars().user) return state?.campaign?.userName || '방장';
+  if (key === 'gm') return gmName();
+  if (key === 'user' && !chars().user) return camp()?.userName || '방장';
   return chars()[key]?.name || seatOf(key)?.label || key;
 }
 function avatar(key) {
-  const label = key === 'gm' ? 'GM' : (charName(key) || '?').slice(0, 1);
-  return `<div class="avatar" style="background:${colorOf(key)}">${esc(label)}</div>`;
+  const label = key === 'gm' ? gmName().slice(0, 2) : (charName(key) || '?').slice(0, 1);
+  return `<span class="avatar${key === 'gm' ? ' gm' : ''}" style="background:${colorOf(key)}" aria-hidden="true">${esc(label)}</span>`;
+}
+function tracksOf(ch) {
+  return ch.sheet?.tracks || [{ label: 'HP', value: ch.hp, max: ch.maxHp }];
+}
+function bar(t) {
+  const pct = Math.max(0, Math.min(100, Math.round((t.value / Math.max(1, t.max)) * 100)));
+  return `<span class="bar${t.kind ? ` ${t.kind}` : ''}${!t.kind && pct <= 30 ? ' low' : ''}"><i style="width:${pct}%"></i></span>`;
+}
+function htmlToNode(html) {
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  return t.content.firstChild;
 }
 
 // ---------------------------------------------------------------------------
 // Log
 
+function rollHtml(m, fresh) {
+  const r = m.roll;
+  if (r.kind !== 'check') {
+    return `<div class="msg" data-id="${m.id}"><div class="roll free${fresh ? ' fresh' : ''}"><b>${esc(charName(r.who))}</b> ${esc(r.expr)} <span class="muted">${esc(r.detail)}</span> <span class="die">${r.total}</span></div></div>`;
+  }
+  const tier = r.tier || OLD_TIER[r.outcome] || 'good';
+  const title = r.title || `${r.stat} 판정`;
+  const label = r.label || OUTCOME[r.outcome] || '';
+  const target = r.target || (r.dc ? `DC ${r.dc}` : '');
+  const dice = r.dice.map((d) => `<span class="die">${d}</span>`).join('');
+  const body = r.mod === undefined
+    ? `${dice}<span class="muted">${esc(target)}</span>`
+    : `${dice}<span class="muted">${sign(r.mod)}</span><span class="muted">=</span><span class="total">${r.total}</span><span class="muted">${esc(target)}</span>`;
+  const lines = [];
+  if (r.text) lines.push(`<div class="rolltext">${esc(r.text)}${r.after ? ` <span class="muted">(${esc(r.after)})</span>` : ''}</div>`);
+  if (r.diceNote) lines.push(`<div class="rolltext muted">${esc(r.diceNote)}</div>`);
+  if (r.selfDamage) lines.push(`<div class="rolltext">받은 피해 <b>${r.selfDamage.total}</b></div>`);
+  if (r.damage) lines.push(`<div class="rolltext">피해 ${esc(r.damage.expr)} = <b>${r.damage.total}</b>${r.damage.target ? ` → ${esc(r.damage.target)}` : ''}</div>`);
+  if (r.pendingChoice) lines.push('<div class="rolltext muted">선택을 기다리는 중…</div>');
+  if (r.chosen?.length) lines.push(`<div class="rolltext">✔ ${r.chosen.map(esc).join(' / ')}</div>`);
+  if (r.notes?.length) lines.push(`<div class="rolltext muted">${r.notes.map(esc).join(' · ')}</div>`);
+  if (r.why) lines.push(`<div class="rolltext muted">${esc(r.why)}</div>`);
+  return `<div class="msg" data-id="${m.id}"><section class="roll tier-${tier}${r.who === 'user' ? ' mine' : ''}${fresh ? ' fresh' : ''}" aria-label="판정">
+    <div class="rollhead"><span class="who"><b>${esc(charName(r.who))}</b> · ${esc(title)}</span><span class="res">${esc(label)}</span></div>
+    <div class="rollbody">${body}</div>${lines.join('')}</section></div>`;
+}
+
 function msgHtml(m, fresh) {
   switch (m.type) {
     case 'narration':
-      return `<div class="msg narration"><span class="tag">${esc(state?.campaign?.gmName || 'GM')}</span>${esc(m.text)}</div>`;
+      return `<article class="msg narration"><span class="tag">${esc(gmName())}${seatOf('gm') ? ` · ${esc(seatOf('gm').label)}` : ''}</span>${esc(m.text)}</article>`;
     case 'scene': {
       const [title, ...rest] = m.text.split(' — ');
-      return `<div class="msg scene">📍 ${esc(title)}<small>${esc(rest.join(' — '))}</small></div>`;
+      return `<div class="msg scene">${esc(title)}<small>${esc(rest.join(' — '))}</small></div>`;
     }
     case 'declare': {
-      const me = m.from === 'user' ? ' me' : '';
-      return `<div class="msg declare${me}">${avatar(m.from)}<div class="bubble">
-        <div class="who"><b>${esc(charName(m.from))}</b> · ${esc(seatOf(m.from)?.label || '')}</div>
-        ${m.say ? `<div class="say">${esc(m.say)}</div>` : ''}
+      const me = m.from === 'user';
+      const ch = chars()[m.from];
+      const who = me ? `${esc(charName(m.from))}${ch?.concept ? ` · ${esc(ch.concept)}` : ''} · 나` : `<b>${esc(charName(m.from))}</b>${ch?.concept ? ` · ${esc(ch.concept)}` : ''} · ${esc(seatOf(m.from)?.label || '')}`;
+      return `<div class="msg declare${me ? ' me' : ''}">${avatar(m.from)}<div class="bubble">
+        <div class="who">${who}</div>
+        ${m.move ? `<span class="move">[${esc(m.move)}]</span>` : ''}${m.say ? `<div class="say">${esc(m.say)}</div>` : ''}
         ${m.action ? `<div class="act">${esc(m.action)}</div>` : ''}
       </div></div>`;
     }
     case 'ooc':
-      return `<div class="msg ooc">💬 <b>${esc(seatOf(m.from)?.label || m.from)}</b> ${esc(m.text)}</div>`;
-    case 'roll': {
-      const r = m.roll;
-      if (r.kind === 'check') {
-        const tier = r.tier || OLD_TIER[r.outcome] || 'good';
-        const title = r.title || `${r.stat} 판정`;
-        const label = r.label || OUTCOME[r.outcome] || '';
-        const target = r.target || (r.dc ? `DC ${r.dc}` : '');
-        const dice = r.dice.map((d) => `<span class="die">${d}</span>`).join('');
-        const mod = r.mod === undefined ? '' : `<span class="muted">${sign(r.mod)}</span> = <span class="total">${r.total}</span>`;
-        const lines = [];
-        if (r.text) lines.push(`<div class="rolltext">${esc(r.text)}${r.after ? ` <span class="muted">(${esc(r.after)})</span>` : ''}</div>`);
-        if (r.diceNote) lines.push(`<div class="rolltext muted">${esc(r.diceNote)}</div>`);
-        if (r.selfDamage) lines.push(`<div class="rolltext">🩸 받은 피해 <b>${r.selfDamage.total}</b></div>`);
-        if (r.damage) lines.push(`<div class="rolltext">⚔ 피해 ${esc(r.damage.expr)} = <b>${r.damage.total}</b>${r.damage.target ? ` → ${esc(r.damage.target)}` : ''}</div>`);
-        if (r.pendingChoice) lines.push('<div class="rolltext muted">선택을 기다리는 중…</div>');
-        if (r.chosen?.length) lines.push(`<div class="rolltext">✔ ${r.chosen.map(esc).join(' / ')}</div>`);
-        if (r.notes?.length) lines.push(`<div class="rolltext muted">${r.notes.map(esc).join(' · ')}</div>`);
-        if (r.why) lines.push(`<div class="rolltext muted">${esc(r.why)}</div>`);
-        return `<div class="msg" data-id="${m.id}"><div class="roll tier-${tier}${fresh ? ' fresh' : ''}">
-          <div class="rollhead"><span>🎲 <b>${esc(charName(r.who))}</b> · ${esc(title)}</span><span class="res">${esc(label)}</span></div>
-          <div class="rollbody">${dice}${mod}<span class="muted">${esc(target)}</span></div>
-          ${lines.join('')}</div></div>`;
-      }
-      return `<div class="msg"><div class="roll${fresh ? ' fresh' : ''}">🎲 <b>${esc(charName(r.who))}</b> ${esc(r.expr)} <span class="muted">${esc(r.detail)}</span> = <span class="d20">${r.total}</span></div></div>`;
-    }
+      return `<div class="msg ooc"><b>${esc(m.from === 'user' ? camp()?.userName || '나' : seatOf(m.from)?.label || m.from)}</b> ${esc(m.text)}</div>`;
+    case 'roll':
+      return rollHtml(m, fresh);
     default: {
-      const intro = m.from === 'gm' ? ' intro' : '';
-      return `<div class="msg system${m.effect ? ' effect' : ''}${intro}">${esc(m.text)}</div>`;
+      const cls = m.from === 'gm' ? ' intro' : m.effect ? ' effect' : m.clue ? ' clue' : '';
+      return `<div class="msg system${cls}">${esc(m.text)}</div>`;
     }
   }
-}
-
-function htmlToNode(html) {
-  const t = document.createElement('template');
-  t.innerHTML = html.trim();
-  return t.content.firstChild;
 }
 
 function appendMsg(m, fresh) {
@@ -161,8 +187,9 @@ function appendMsg(m, fresh) {
 
 function renderLog() {
   const box = $('#log');
-  if (!state?.campaign) {
-    box.innerHTML = `<div class="empty"><h2>🎲 What Do You Do?</h2><p>AI GM과 AI 플레이어들이 함께하는 TRPG 테이블.<br>오른쪽 위 <b>＋ 새 캠페인</b>으로 시작하세요.</p></div>`;
+  if (!camp()) {
+    box.innerHTML = '<div class="empty"><h2>What Do You Do?</h2><p>AI GM과 AI 플레이어들이 함께하는 TRPG 테이블.<br>새 캠페인으로 시작하세요.</p><button id="emptyNew">새 캠페인</button></div>';
+    $('#emptyNew').onclick = openSetup;
     return;
   }
   box.innerHTML = log.map((m) => msgHtml(m, false)).join('');
@@ -170,331 +197,466 @@ function renderLog() {
 }
 
 // ---------------------------------------------------------------------------
-// State
-
-const STATUS = { thinking: '생각 중', done: '✓ 선언', waiting: '차례 대기', rolling: '🎲 굴릴 차례', choosing: '고르는 중', idle: '' };
-const advLabel = (a) => (a === 'advantage' ? ', 유리' : a === 'disadvantage' ? ', 불리' : '');
-const checkLabel = (p) => (p.move ? `${p.move}${p.stat && !['없음', '유대'].includes(p.stat) ? ` +${p.stat}` : ''}` : `${p.stat} 판정 (DC ${p.dc}${advLabel(p.adv)})`);
+// Party, story, sheets
 
 function renderParty() {
   const box = $('#party');
-  if (!state?.campaign) { box.innerHTML = ''; return; }
+  if (!camp()) { box.innerHTML = ''; return; }
   box.innerHTML = state.seats.map((s) => {
-    const ch = chars()[s.key];
-    const status = `<div class="status ${s.status}">${STATUS[s.status] || ''}</div>`;
+    const st = `st-${s.status}`;
+    const status = `<span class="status">${STATUS[s.status] || ''}</span>`;
     if (s.key === 'gm') {
-      const gmName = state.campaign.gmName === '키퍼' ? '키퍼' : '게임 마스터';
-      return `<div class="seat gm">${status}<div class="who">${avatar('gm')}<div><div class="name">${gmName}</div><div class="sub">${esc(s.label)}</div></div></div></div>`;
+      return `<button class="seat gm ${st}" data-seat="gm" aria-label="${esc(gmName())} ${esc(s.label)}: 이야기 보기">${avatar('gm')}
+        <span class="info"><span class="name">${esc(gmName())}</span><span class="sub">${esc(s.label)}</span></span>${status}</button>`;
     }
-    if (!ch) return `<div class="seat">${status}<div class="who">${avatar(s.key)}<div><div class="name">캐릭터 만드는 중…</div><div class="sub">${esc(s.label)}</div></div></div></div>`;
-    const tracks = (ch.sheet?.tracks || [{ label: 'HP', value: ch.hp, max: ch.maxHp }]).filter((t) => t.label === 'HP' || t.kind === 'san');
-    return `<div class="seat">${status}
-      <div class="who">${avatar(s.key)}<div><div class="name">${esc(ch.name)}</div><div class="sub">${esc(s.label)}</div></div></div>
-      <div class="concept">${esc(ch.concept)}</div>
-      ${tracks.map((t) => {
-        const pct = Math.round((t.value / Math.max(1, t.max)) * 100);
-        return `<div class="hp${t.kind ? ` ${t.kind}` : ''}${pct <= 30 ? ' low' : ''}"><i style="width:${pct}%"></i></div><div class="hptext">${esc(t.label)} ${t.value} / ${t.max}</div>`;
-      }).join('')}
-      ${ch.conditions?.length ? `<div class="conds">${ch.conditions.map((c) => `<span>${esc(c)}</span>`).join('')}</div>` : ''}
-    </div>`;
+    const ch = chars()[s.key];
+    if (!ch) {
+      return `<button class="seat ${st}" data-seat="${s.key}" disabled>${avatar(s.key)}<span class="info"><span class="name">만드는 중…</span><span class="sub">${esc(s.label)}</span></span>${status}</button>`;
+    }
+    const tracks = tracksOf(ch).filter((t) => t.label === 'HP' || t.kind === 'san');
+    const me = s.key === 'user' ? ' (나)' : '';
+    return `<button class="seat ${st}" data-seat="${s.key}" aria-label="${esc(ch.name)} 시트 열기">${avatar(s.key)}
+      <span class="info"><span class="name${me ? ' me-tag' : ''}">${esc(ch.name)}${me}</span><span class="sub">${esc(s.label)}</span><span class="concept">${esc(ch.concept)}</span></span>
+      ${status}
+      <span class="bars">${tracks.map(bar).join('')}<span class="hptext">${tracks.map((t) => `${esc(t.label)} ${t.value}/${t.max}`).join(' · ')}</span>
+      ${ch.conditions?.length ? `<span class="conds">${ch.conditions.map((x) => `<span>${esc(x)}</span>`).join('')}</span>` : ''}</span>
+    </button>`;
   }).join('');
 }
 
-function renderScene() {
-  const c = state?.campaign;
+function renderStory() {
+  const c = camp();
   const box = $('#tab-scene');
   if (!c) { box.innerHTML = '<p class="muted">캠페인이 없어요.</p>'; return; }
   box.innerHTML = `
-    <h3>${esc(c.title || '준비 중')}</h3>
-    <p class="muted">${esc(c.premise)}${c.tone ? ` · ${esc(c.tone)}` : ''}</p>
+    <p class="storyhead">${esc(c.title || '준비 중')}</p>
+    <p class="muted">${esc(c.rulesLabel || '')} · ${esc(c.premise)}${c.tone ? ` · ${esc(c.tone)}` : ''}</p>
     ${c.pitch ? `<div class="pre">${esc(c.pitch)}</div>` : ''}
-    ${c.scene?.title ? `<h3>📍 ${esc(c.scene.title)}</h3><p>${esc(c.scene.description)}</p>` : ''}
-    ${c.clues?.length ? `<h3>🔎 단서 수첩</h3><ul class="clues">${c.clues.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
-    ${c.foes?.length ? `<h3>적</h3>${c.foes.map((f) => `<div class="foe"><div><b>${esc(f.name)}</b> <span class="muted">${f.armor ? `갑옷 ${f.armor} · ` : ''}${f.damage ? `피해 ${esc(f.damage)}` : ''}${f.attack ? ` · 공격 ${f.attack}` : ''}${f.dodge ? ` · 회피 ${f.dodge}` : ''}</span></div>
-      <div class="hp${f.hp / f.maxHp <= 0.3 ? ' low' : ''}"><i style="width:${Math.round((f.hp / f.maxHp) * 100)}%"></i></div><div class="hptext">HP ${f.hp} / ${f.maxHp}${f.note ? ` · ${esc(f.note)}` : ''}</div></div>`).join('')}` : ''}
+    ${c.scene?.title ? `<h3>${esc(c.scene.title)}</h3><p>${esc(c.scene.description)}</p>` : ''}
+    ${c.clues?.length ? `<h3>단서 수첩</h3><ul class="clues">${c.clues.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+    ${c.foes?.length ? `<h3>적</h3>${c.foes.map((f) => `<div class="foe"><div><b>${esc(f.name)}</b> <span class="muted">${[f.armor ? `갑옷 ${f.armor}` : '', f.damage ? `피해 ${esc(f.damage)}` : '', f.attack ? `공격 ${f.attack}` : '', f.dodge ? `회피 ${f.dodge}` : ''].filter(Boolean).join(' · ')}</span></div>
+      ${bar({ value: f.hp, max: f.maxHp })}<div class="muted">HP ${f.hp} / ${f.maxHp}${f.note ? ` · ${esc(f.note)}` : ''}</div></div>`).join('')}` : ''}
     ${c.summary ? `<h3>지금까지의 이야기</h3><div class="pre">${esc(c.summary)}</div>` : ''}
-    <h3>진행</h3><p>${esc(c.rulesLabel || '')} · 라운드 ${c.round} / 목표 ${c.targetRounds}</p>`;
+    <h3>진행</h3><p>라운드 ${c.round} / 목표 ${c.targetRounds}</p>`;
+}
+
+function sheetHtml(ch, full) {
+  const sh = ch.sheet || { badges: [], stats: Object.entries(ch.stats || {}).map(([label, v]) => ({ label, value: sign(v) })), lists: [], tracks: [] };
+  const tracks = tracksOf(ch);
+  const lore = [['외모', ch.appearance], ['성격', ch.personality], ['배경', ch.background]].filter(([, v]) => v);
+  return `<section class="sheetcard${full ? ' plain' : ''}">
+    <div class="ident">${avatar(ch.key)}<div><div class="nm">${esc(ch.name)}</div><div class="cp">${esc(ch.concept)} · ${esc(seatOf(ch.key)?.label || '')}</div></div></div>
+    <div class="tracks">${tracks.map((t) => `<div class="track${t.kind ? ` ${t.kind}` : ''}"><span>${esc(t.label)}</span><b>${t.value}<small> / ${t.max}</small></b>${t.label === 'HP' ? bar(t) : ''}</div>`).join('')}</div>
+    ${ch.conditions?.length ? `<div class="conds">${ch.conditions.map((x) => `<span>${esc(x)}</span>`).join('')}</div>` : ''}
+    ${sh.badges.length ? `<div class="badges">${sh.badges.map((b) => `<span>${esc(b)}</span>`).join('')}</div>` : ''}
+    <div class="statgrid${sh.stats.length === 8 ? ' eight' : ''}">${sh.stats.map((s) => `<div class="${s.warn ? 'warn' : ''}">${esc(s.label)}<b>${esc(s.value)}</b>${s.sub ? `<small>${esc(s.sub)}</small>` : ''}</div>`).join('')}</div>
+    ${sh.lists.map((l) => `<div class="sublist"><h4>${esc(l.title)}</h4><ul>${l.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></div>`).join('')}
+    ${ch.items?.length ? `<div class="sublist"><h4>소지품</h4><ul>${ch.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></div>` : ''}
+    ${lore.length ? `<div class="lore">${lore.map(([k, v]) => `<div><b>${k}</b> ${esc(v)}</div>`).join('')}</div>` : ''}
+  </section>`;
 }
 
 function renderSheets() {
-  const box = $('#tab-sheets');
   const list = Object.values(chars());
-  if (!list.length) { box.innerHTML = '<p class="muted">아직 캐릭터가 없어요.</p>'; return; }
-  box.innerHTML = list.map((ch) => {
-    const sh = ch.sheet || { badges: [], stats: Object.entries(ch.stats || {}).map(([label, v]) => ({ label, value: sign(v) })), lists: [] };
-    return `<div class="sheet">
-    <h4>${esc(ch.name)} <span class="muted">· ${esc(seatOf(ch.key)?.label || '')}</span></h4>
-    <div class="muted">${esc(ch.concept)}</div>
-    ${sh.badges.length ? `<div class="badges">${sh.badges.map((b) => `<span>${esc(b)}</span>`).join('')}</div>` : ''}
-    <div class="statgrid">${sh.stats.map((s) => `<div class="${s.warn ? 'warn' : ''}">${esc(s.label)}<b>${esc(s.value)}</b>${s.sub ? `<small>${esc(s.sub)}</small>` : ''}</div>`).join('')}</div>
-    <div>HP ${ch.hp} / ${ch.maxHp}${ch.conditions.length ? ` · ${ch.conditions.map(esc).join(', ')}` : ''}</div>
-    ${sh.lists.map((l) => `<div class="sublist"><b>${esc(l.title)}</b><ul>${l.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></div>`).join('')}
-    ${ch.items.length ? `<div>🎒 ${ch.items.map(esc).join(', ')}</div>` : ''}
-    ${ch.appearance ? `<div class="muted">외모: ${esc(ch.appearance)}</div>` : ''}
-    ${ch.personality ? `<div class="muted">성격: ${esc(ch.personality)}</div>` : ''}
-    ${ch.background ? `<div class="muted">배경: ${esc(ch.background)}</div>` : ''}
-  </div>`;
-  }).join('');
+  $('#tab-sheets').innerHTML = list.length ? list.map((ch) => sheetHtml(ch, false)).join('') : '<p class="muted">아직 캐릭터가 없어요.</p>';
+  if (sheetKey) {
+    const ch = chars()[sheetKey];
+    if (!ch) { closeSheet(); return; }
+    $('#sheetBody').innerHTML = sheetHtml(ch, true);
+    $('#sheetRules').textContent = camp()?.rulesLabel || '';
+  }
+}
+
+function openSheet(key) {
+  if (!chars()[key]) return;
+  sheetKey = key;
+  renderSheets();
+  $('#sheetPage').hidden = false;
+  $('#sheetBack').focus();
+}
+function closeSheet() {
+  sheetKey = null;
+  $('#sheetPage').hidden = true;
 }
 
 async function renderSecrets() {
   const box = $('#secretsBody');
-  if (!secretsOpen) { box.innerHTML = ''; $('#peekBtn').textContent = '👁 엿보기'; return; }
-  $('#peekBtn').textContent = '🙈 가리기';
+  if (!secretsOpen) { box.innerHTML = ''; $('#peekBtn').textContent = '엿보기'; return; }
+  $('#peekBtn').textContent = '가리기';
   const s = await fetch('/api/secrets').then((r) => r.json());
-  box.innerHTML = `<h3>GM 비밀 메모</h3><div class="pre">${esc(s.gmNotes || '(비어 있음)')}</div>`
+  box.innerHTML = `<h3>${esc(gmName())} 비밀 메모</h3><div class="pre">${esc(s.gmNotes || '(비어 있음)')}</div>`
     + Object.entries(s.notes || {}).map(([k, n]) => `<h3>${esc(charName(k))}의 메모</h3><div class="pre">${esc(n || '(비어 있음)')}</div>`).join('');
 }
 
+// Drawer (story panel on narrow screens)
+function openDrawer(tab) {
+  if (tab) selectTab(tab);
+  document.body.classList.add('drawer-open');
+  $('#scrim').hidden = false;
+}
+function closeDrawer() {
+  document.body.classList.remove('drawer-open');
+  $('#scrim').hidden = true;
+}
+function selectTab(tab) {
+  $$('#tabs button').forEach((x) => { x.classList.toggle('on', x.dataset.tab === tab); x.setAttribute('aria-selected', x.dataset.tab === tab); });
+  $$('.tabbody').forEach((x) => { x.hidden = x.id !== `tab-${tab}`; });
+  if (tab === 'secrets') renderSecrets();
+}
+
+// ---------------------------------------------------------------------------
+// Header, banner, turn line, action sheet, composer
+
+function renderHeader() {
+  const c = camp();
+  $('#campaignTitle').textContent = c ? (c.title || '캠페인 준비 중') : 'What Do You Do?';
+  let sub = '';
+  if (c) {
+    sub = PHASE[state.phase] || '';
+    if (c.round > 0 && !['prep', 'ended'].includes(state.phase)) sub = `라운드 ${c.round} · ${sub}`;
+    sub = `${c.rulesLabel} · ${sub}`;
+    if (c.paused) sub = `멈춤 · ${sub}`;
+  }
+  $('#phasePill').textContent = sub;
+  const pb = $('#pauseBtn');
+  pb.hidden = !c || state.phase === 'ended';
+  pb.innerHTML = c?.paused ? ICON.play : ICON.pause;
+  pb.setAttribute('aria-label', c?.paused ? '재개' : '멈춤');
+  document.querySelector('meta[name=theme-color]').content = getComputedStyle(document.body).getPropertyValue('--bg').trim() || '#16141b';
+}
+
 function renderBanner() {
-  const c = state?.campaign;
+  const c = camp();
   const b = $('#banner');
   if (c?.error) { b.textContent = `⚠ ${c.error}`; b.className = 'banner'; b.hidden = false; return; }
   const onlyDemo = state && Object.entries(state.available || {}).every(([k, v]) => k === 'mock' || !v);
-  if (onlyDemo) { b.textContent = '연결된 AI CLI가 없어서 데모봇이 모든 자리를 맡고 있어요. README의 설치 안내를 참고하세요.'; b.className = 'banner info'; b.hidden = false; return; }
+  if (onlyDemo) { b.textContent = '연결된 AI CLI가 없어서 데모봇이 모든 자리를 맡고 있어요.'; b.className = 'banner info'; b.hidden = false; return; }
   b.hidden = true;
 }
 
 function renderTurnbar() {
-  const c = state?.campaign;
+  const c = camp();
   const bar = $('#turnbar');
-  const parts = [];
-  const myChoices = (c?.pendingChoices || []).filter((p) => p.who === 'user');
-  if (c && !c.paused) {
-    if (myChoices.length) {
-      for (const p of myChoices) {
-        parts.push(`<div class="choice" data-choice="${p.id}" data-count="${p.count}"><div>${esc(p.prompt)}</div>
-          <div class="opts">${p.options.map((o, i) => `<button type="button" class="opt" data-i="${i}">${esc(o)}</button>`).join('')}</div>
-          ${p.textFor >= 0 ? `<label class="choiceText" data-for="${p.textFor}" hidden>${esc(p.textLabel || '')}<input type="text" maxlength="200"></label>` : ''}
-          <button type="button" data-confirm="${p.id}" disabled>고르기</button></div>`);
-      }
-    } else if (state.phase === 'roll' && c.pendingChecks.length) {
-      parts.push('🎲 판정이에요!');
-      for (const p of c.pendingChecks) {
-        parts.push(`<button data-roll="${p.id}">${esc(p.label || checkLabel(p))} 굴리기</button>`);
-        if (p.why) parts.push(`<span class="muted">${esc(p.why)}</span>`);
-      }
-    } else if (state.phase === 'declare' && seatOf('user')?.status === 'waiting') {
-      const thinking = state.seats.some((s) => s.status === 'thinking');
-      parts.push(thinking ? '다른 플레이어가 선언하는 중이에요. 먼저 선언해도 돼요.' : `<span><b>${esc(charName('user'))}</b>, 어떻게 하시겠습니까?</span>`);
-    } else if (state.phase === 'gm-wait') {
-      parts.push('GM(당신)의 서술을 기다리고 있어요. 보내면 다음 라운드가 시작돼요.');
-    }
+  let html = '';
+  if (c?.paused) {
+    html = '<span class="grow">멈춤 상태예요.</span><button type="button" data-resume>재개</button>';
+  } else if (c && state.phase !== 'ended') {
+    const thinking = state.seats.filter((s) => s.status === 'thinking').map((s) => (s.key === 'gm' ? gmName() : charName(s.key)));
+    const myTurn = state.phase === 'declare' && seatOf('user')?.status === 'waiting';
+    const parts = [];
+    if (myTurn && !thinking.length) parts.push(`<b>${esc(charName('user'))}</b>, 어떻게 하시겠습니까?`);
+    else if (myTurn) parts.push('먼저 선언해도 돼요');
+    if (thinking.length) parts.push(`${thinking.map(esc).join(', ')} 생각 중…`);
+    if (state.phase === 'gm-wait') parts.push('GM(당신)의 서술을 기다려요. 보내면 다음 라운드가 시작돼요.');
+    if (parts.length) html = `<span class="grow">${parts.join(' · ')}</span>${myTurn ? '<button type="button" class="ghost" data-pass>넘기기</button>' : ''}`;
   }
-  if (c?.paused) parts.push('⏸ 멈춤 상태예요.');
-  bar.innerHTML = parts.join(' ');
-  bar.hidden = !parts.length;
+  bar.innerHTML = html;
+  bar.hidden = !html;
+}
+
+function rollOf(rid) {
+  return log.find((m) => m.roll?.rid === rid)?.roll;
+}
+
+function renderActionSheet() {
+  const c = camp();
+  const sheet = $('#actionSheet');
+  const choices = (c?.pendingChoices || []).filter((p) => p.who === 'user');
+  const checks = state?.phase === 'roll' ? c?.pendingChecks || [] : [];
+  const key = c && !c.paused ? [...choices.map((p) => `c${p.id}`), ...checks.map((p) => `r${p.id}`)].join(',') : '';
+  if (key === actionKey) return;
+  actionKey = key;
+  if (!key) {
+    sheet.hidden = true;
+    sheet.innerHTML = '';
+    document.body.classList.remove('sheet-open');
+    return;
+  }
+  if (choices.length) {
+    const p = choices[0];
+    const r = rollOf(p.rid);
+    const multi = p.count > 1;
+    sheet.innerHTML = `<div class="sheetchoice" data-choice="${p.id}" data-count="${p.count}">
+      ${r ? `<div class="rollbody">${r.dice.map((d) => `<span class="die">${d}</span>`).join('')}<div><div class="muted">${esc(r.title || '')}${r.mod !== undefined ? ` · ${sign(r.mod)} = ${r.total}` : ''}</div><h3>${esc(r.label || '')}</h3></div></div>` : ''}
+      <p class="lead">${esc(p.prompt)}</p>
+      <div class="opts" role="group" aria-label="선택지">${p.options.map((o, i) => `<button type="button" class="opt${multi ? ' multi' : ''}" data-i="${i}" aria-pressed="false">${esc(o)}</button>`).join('')}</div>
+      ${p.textFor >= 0 ? `<label class="choiceText" data-for="${p.textFor}" hidden>${esc(p.textLabel || '')}<textarea rows="2" maxlength="200"></textarea></label>` : ''}
+      <div class="sheetactions"><button type="button" data-confirm="${p.id}" disabled>${multi ? `${p.count}개 고르기` : '고르기'}</button></div>
+    </div>`;
+  } else {
+    const dice = DICE[c.rules] || '주사위';
+    sheet.innerHTML = checks.map((p) => `<div>
+      <h3>판정 차례예요</h3>
+      ${p.why ? `<p class="lead">${esc(p.why)}</p>` : ''}
+      <div class="chips meta"><span>${esc(p.label || p.move || p.skill || p.stat || '')}</span>${p.difficulty && p.difficulty !== 'regular' ? `<span>${p.difficulty === 'hard' ? '어려움' : '극단'}</span>` : ''}${p.bonus ? `<span>보너스 ${p.bonus}</span>` : ''}${p.penalty ? `<span>페널티 ${p.penalty}</span>` : ''}${p.push_risk ? `<span>밀어붙였다 실패하면: ${esc(p.push_risk)}</span>` : ''}</div>
+      <button type="button" class="rollcta" data-roll="${p.id}" style="width:100%">${dice} 굴리기</button>
+    </div>`).join('');
+  }
+  sheet.hidden = false;
+  document.body.classList.toggle('sheet-open', mobile());
 }
 
 function renderComposer() {
-  const c = state?.campaign;
+  const c = camp();
   const role = c?.userRole;
-  const modes = $('#modes');
-  modes.innerHTML = role === 'gm'
-    ? '<button type="button" data-mode="declare">📜 서술</button><button type="button" data-mode="ooc">💬 잡담</button>'
-    : role === 'player'
-      ? '<button type="button" data-mode="declare">🗡 선언</button><button type="button" data-mode="ooc">💬 잡담</button>'
-      : '<button type="button" data-mode="ooc">💬 잡담</button>';
+  $('#composer').hidden = !c;
+  if (!c) return;
+  const ic = role === 'gm' ? '서술' : '선언';
+  const modes = role === 'player' || role === 'gm' ? [['declare', ic], ['ooc', '잡담']] : [['ooc', '잡담']];
   // New table or new role: start on the in-character mode when there is one.
-  if (role !== lastRole) { mode = role === 'player' || role === 'gm' ? 'declare' : 'ooc'; lastRole = role; }
-  modes.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
-  if (!modes.querySelector('.on')) { mode = modes.querySelector('button').dataset.mode; modes.querySelector('button').classList.add('on'); }
-  $('#passBtn').hidden = role !== 'player';
-  $('#passBtn').disabled = !(state?.phase === 'declare' && seatOf('user')?.status === 'waiting');
-  const dw = c?.rules === 'dw';
-  const gmPh = dw ? '장면을 서술하세요 · /check 카엘 위험에 맞서기 민첩 · /dmg 카엘 d8 · /foe 고블린 6 1 d6' : '장면을 서술하세요 · /check 카엘 민첩 15 · /hp 카엘 -3';
-  const ph = { declare: role === 'gm' ? gmPh : `"대사는 따옴표로" 행동은 그냥 쓰기${dw ? ' · [무브]로 노리는 무브 표시' : ''} · /r 2d6+1`, ooc: '테이블 잡담 (캐릭터가 아닌 플레이어로서)' };
-  $('#input').placeholder = ph[mode];
-  $('#composer').style.display = c ? '' : 'none';
+  if (role !== lastRole) { mode = modes[0][0]; lastRole = role; }
+  if (!modes.some(([m]) => m === mode)) mode = modes[0][0];
+  $('#modes').innerHTML = modes.map(([m, l]) => `<button type="button" data-mode="${m}" class="${m === mode ? 'on' : ''}" aria-pressed="${m === mode}" title="${modes.length > 1 ? '눌러서 선언/잡담 바꾸기' : ''}">${l}</button>`).join('');
+  const dw = c.rules === 'dw';
+  const gmPh = c.rules === 'dw' ? '장면 서술 · /check 카엘 위험에 맞서기 민첩' : c.rules === 'coc7' ? '장면 서술 · /check 오필리아 관찰력 어려움' : '장면 서술 · /check 카엘 민첩 15';
+  $('#input').placeholder = mode === 'ooc' ? '테이블 잡담 (플레이어로서)' : role === 'gm' ? gmPh : '“대사” 행동은 그냥 쓰기';
   const moves = dw && role === 'player' && mode === 'declare' ? state.rulesets?.dw?.moves || [] : [];
   $('#moveChips').innerHTML = moves.map((m) => `<button type="button" data-move="${esc(m.name)}">${esc(m.name)}</button>`).join('');
   $('#moveChips').hidden = !moves.length;
 }
 
-function renderHeader() {
-  const c = state?.campaign;
-  $('#campaignTitle').textContent = c ? (c.title || '캠페인 준비 중') : '테이블이 비어 있어요';
-  let pill = PHASE[state?.phase] || '';
-  if (c && c.round > 0 && !['prep', 'ended'].includes(state.phase)) pill = `라운드 ${c.round} · ${pill}`;
-  if (c?.paused) pill = `⏸ ${pill}`;
-  $('#phasePill').textContent = c ? pill : '';
-  const pb = $('#pauseBtn');
-  pb.hidden = !c || state.phase === 'ended';
-  pb.textContent = c?.paused ? '▶ 재개' : '⏸ 멈춤';
-}
-
 function renderState() {
-  document.body.dataset.rules = state?.campaign?.rules || '';
+  document.body.dataset.rules = camp()?.rules || '';
   renderHeader();
   renderBanner();
   renderParty();
-  renderScene();
+  renderStory();
   renderSheets();
   renderTurnbar();
+  renderActionSheet();
   renderComposer();
+  if (secretsOpen && !$('#tab-secrets').hidden) renderSecrets();
 }
 
 function renderAll() {
+  actionKey = null;
   renderState();
   renderLog();
 }
 
 // ---------------------------------------------------------------------------
-// Setup dialog
+// Setup wizard
+
+const STEP_NAME = { rules: '룰 고르기', story: '이야기 정하기', char: '캐릭터 만들기', seats: '자리 배치' };
+let step = 0;
+let setupRules = 'dw';
+const form = () => $('#setupForm');
+const ruleMeta = () => state?.rulesets?.[setupRules] || state?.rulesets?.d20;
+const role = () => new FormData(form()).get('userRole');
+const steps = () => ['rules', 'story', role() === 'player' ? 'char' : null, 'seats'].filter(Boolean);
 
 function openSetup() {
-  const dlg = $('#setup');
   const avail = state?.available || {};
   const names = { claude: 'Claude', codex: 'ChatGPT', grok: 'Grok', agy: 'Gemini', mock: '데모봇' };
   const real = ['claude', 'codex', 'grok', 'agy'].filter((k) => avail[k]);
-  const opts = (sel, allowNone) => (allowNone ? '<option value="">— 비움 —</option>' : '')
+  const opts = (sel, allowNone) => (allowNone ? '<option value="">비움</option>' : '')
     + Object.keys(names).filter((k) => avail[k]).map((k) => `<option value="${k}"${k === sel ? ' selected' : ''}>${names[k]}</option>`).join('');
-  const gmDefault = real[0] || 'mock';
-  $('#gmSelect').innerHTML = opts(gmDefault, false);
+  $('#gmSelect').innerHTML = opts(real[0] || 'mock', false);
   const defaults = real.length ? ['codex', 'grok', 'agy', 'claude'].filter((k) => avail[k]).slice(0, 3) : ['mock', 'mock', 'mock'];
-  $('#playerSelects').innerHTML = [0, 1, 2, 3].map((i) => `<select data-player="${i}">${opts(defaults[i] || '', true)}</select>`).join('');
+  $('#playerSelects').innerHTML = [0, 1, 2, 3].map((i) => `<select data-player="${i}" aria-label="AI 플레이어 ${i + 1}">${opts(defaults[i] || '', true)}</select>`).join('');
   $('#availNote').textContent = real.length
-    ? `찾은 CLI: ${real.map((k) => names[k]).join(', ')}. 한 AI가 GM과 플레이어를 동시에 맡아도 돼요 (매번 따로 호출됩니다).`
+    ? `찾은 CLI: ${real.map((k) => names[k]).join(', ')}. 한 AI가 GM과 플레이어를 같이 맡아도 돼요(매번 따로 불려요).`
     : 'AI CLI를 찾지 못해서 데모봇만 쓸 수 있어요.';
   $('#presets').innerHTML = PRESETS.map(([l, p]) => `<button type="button" data-premise="${esc(p)}">${l}</button>`).join('');
-  const rs = state?.rulesets || {};
-  $('#rulesSeg').innerHTML = Object.values(rs).map((r, i) => `<label><input type="radio" name="rules" value="${r.id}"${(setupRules || 'd20') === r.id || (!rs[setupRules] && i === 0) ? ' checked' : ''}> ${esc(r.label)}</label>`).join('');
+  const rs = Object.values(state?.rulesets || {});
+  if (camp()?.rules) setupRules = camp().rules;
+  if (!state?.rulesets?.[setupRules]) setupRules = rs[0]?.id || 'd20';
+  $('#rulesSeg').innerHTML = '<legend class="sr">룰 시스템</legend>' + rs.map((r) => `<label class="rulecard"><input type="radio" name="rules" value="${r.id}"${r.id === setupRules ? ' checked' : ''}>
+    <span class="rc"><span class="rn">${esc(r.label)}</span><span class="rd">${esc(r.blurb || '')}</span><span class="rt">${(r.tags || []).map((t) => `<span>${esc(t)}</span>`).join('')}</span></span></label>`).join('');
+  step = 0;
   renderRuleFields();
   updateRole();
-  $('#setupCancel').hidden = !state?.campaign;
-  dlg.showModal();
+  showStep();
+  $('#setupCancel').hidden = !camp();
+  $('#setup').showModal();
 }
 
-let setupRules = 'd20';
-const ruleMeta = () => state?.rulesets?.[setupRules] || state?.rulesets?.d20;
+function showStep() {
+  const list = steps();
+  step = Math.min(step, list.length - 1);
+  const cur = list[step];
+  $$('.step').forEach((s) => { s.hidden = s.dataset.step !== cur; });
+  $('#stepBar').innerHTML = list.map((_, i) => `<span class="${i <= step ? 'on' : ''}"></span>`).join('');
+  $('#stepCount').textContent = `${step + 1} / ${list.length}`;
+  $('#stepBack').hidden = step === 0;
+  const last = step === list.length - 1;
+  $('#stepNext').textContent = last ? '시작' : `다음 · ${STEP_NAME[list[step + 1]]}`;
+  $('.dlgbody').scrollTop = 0;
+}
 
-// Stat inputs, class and alignment for the chosen rule system.
+function stepOk() {
+  const cur = steps()[step];
+  const f = new FormData(form());
+  if (cur === 'story' && !String(f.get('premise') || '').trim()) { toast('어떤 이야기인지 한 줄 적어 주세요 (위 예시를 눌러도 돼요)'); $('#premise').focus(); return false; }
+  if (cur === 'char' && !f.get('aiChar') && !String(f.get('charName') || '').trim()) { toast('캐릭터 이름을 적거나 AI에게 맡겨 주세요'); $('#charName').focus(); return false; }
+  if (cur === 'seats' && role() !== 'player' && !$$('[data-player]').some((s) => s.value)) { toast('AI 플레이어를 한 명 이상 골라 주세요'); return false; }
+  return true;
+}
+
+// Stat inputs and rule-specific fields (DW class/alignment, CoC occupation/skills).
 function renderRuleFields() {
-  setupRules = new FormData($('#setupForm')).get('rules') || 'd20';
+  setupRules = new FormData(form()).get('rules') || setupRules;
   const m = ruleMeta();
   if (!m) return;
-  $('#statInputs').style.gridTemplateColumns = `repeat(${Math.min(m.stats.length, 8) > 6 ? 4 : 6}, 1fr)`;
+  $('#setup').dataset.rules = setupRules;
+  $$('[data-role-label="player"]').forEach((x) => { x.textContent = m.playerName || '플레이어'; });
+  $$('[data-role-label="gm"]').forEach((x) => { x.textContent = m.gmName || 'GM'; });
+  $('#gmLabel').textContent = m.gmName || 'GM';
+  $('#statInputs').classList.toggle('eight', m.stats.length === 8);
   if (m.statKind === 'score') {
-    $('#statInputs').innerHTML = m.stats.map((s, i) => `<div>${s}<select data-stat="${s}">${m.scores.map((v) => `<option${v === m.statDefaults[i] ? ' selected' : ''}>${v}</option>`).join('')}</select></div>`).join('');
+    $('#statInputs').innerHTML = m.stats.map((s, i) => `<div>${s}<select data-stat="${s}" aria-label="${s}">${m.scores.map((v) => `<option${v === m.statDefaults[i] ? ' selected' : ''}>${v}</option>`).join('')}</select></div>`).join('');
   } else {
-    $('#statInputs').innerHTML = m.stats.map((s, i) => `<div>${s}<input type="number" min="${m.statMin}" max="${m.statMax}" value="${m.statDefaults[i]}" data-stat="${s}"></div>`).join('');
+    $('#statInputs').innerHTML = m.stats.map((s, i) => `<div>${s}<input type="number" inputmode="numeric" min="${m.statMin}" max="${m.statMax}" value="${m.statDefaults[i]}" data-stat="${s}" aria-label="${s}"></div>`).join('');
   }
-  // Rule-specific fields: DW class/alignment, CoC occupation/skills.
   const fields = m.fields || [];
   $('#ruleFields').hidden = !fields.length;
-  $('#ruleFields').innerHTML = fields.map((fd) => `<div><label>${esc(fd.label)}</label>${fd.options && !fd.free
-    ? `<select data-field="${fd.name}">${fd.options.map((o) => `<option>${esc(o)}</option>`).join('')}</select>`
-    : `<input data-field="${fd.name}" placeholder="${esc(fd.placeholder || '')}"${fd.options ? ` list="dl-${fd.name}"` : ''}>${fd.options ? `<datalist id="dl-${fd.name}">${fd.options.map((o) => `<option value="${esc(o)}">`).join('')}</datalist>` : ''}`}</div>`).join('');
+  $('#ruleFields').innerHTML = fields.map((fd) => `<div><label for="rf-${fd.name}">${esc(fd.label)}</label>${fd.options && !fd.free
+    ? `<select id="rf-${fd.name}" data-field="${fd.name}">${fd.options.map((o) => `<option>${esc(o)}</option>`).join('')}</select>`
+    : `<input id="rf-${fd.name}" data-field="${fd.name}" placeholder="${esc(fd.placeholder || '')}"${fd.options ? ` list="dl-${fd.name}"` : ''}>${fd.options ? `<datalist id="dl-${fd.name}">${fd.options.map((o) => `<option value="${esc(o)}">`).join('')}</datalist>` : ''}`}</div>`).join('');
   updateBudget();
 }
 
 function updateBudget() {
   const m = ruleMeta();
   if (!m) return;
-  const vals = [...document.querySelectorAll('[data-stat]')].map((i) => Number(i.value || 0));
+  const vals = $$('[data-stat]').map((i) => Number(i.value || 0));
   const el = $('#statBudget');
   if (m.statKind === 'percent') {
-    el.textContent = `(${m.statMin}~${m.statMax}, 비우면 서버가 굴려요)`;
+    el.textContent = `(${m.statMin}~${m.statMax})`;
     el.classList.remove('over');
   } else if (m.statKind === 'score') {
     const ok = [...vals].sort((a, b) => b - a).join() === m.scores.join();
-    el.textContent = `(점수 ${m.scores.join('·')}을 하나씩${ok ? '' : ' — 겹치면 서버가 순서대로 다시 나눠요'})`;
+    el.textContent = `(${m.scores.join('·')}을 하나씩${ok ? '' : ' · 겹치면 서버가 다시 나눠요'})`;
     el.classList.toggle('over', !ok);
   } else {
     const sum = vals.reduce((a, b) => a + b, 0);
-    el.textContent = `(보정치 ${m.statMin}~+${m.statMax}, 합 ${sum} / ${m.budget}${sum !== m.budget ? ' — 서버가 맞춰 줘요' : ''})`;
+    el.textContent = `(${m.statMin}~+${m.statMax}, 합 ${sum} / ${m.budget}${sum !== m.budget ? ' · 서버가 맞춰 줘요' : ''})`;
     el.classList.toggle('over', sum !== m.budget);
   }
 }
 
 function updateRole() {
-  const role = new FormData($('#setupForm')).get('userRole');
-  $('#charBox').hidden = role !== 'player';
-  $('#gmBox').hidden = role === 'gm';
-  const ai = $('#setupForm').aiChar.checked;
+  $('#gmBox').hidden = role() === 'gm';
+  const ai = form().aiChar.checked;
   $('#charManual').hidden = ai;
   $('#charHintBox').hidden = !ai;
 }
 
-function submitSetup(e) {
-  e.preventDefault();
-  const f = new FormData($('#setupForm'));
-  const role = f.get('userRole');
-  const players = [...document.querySelectorAll('[data-player]')].map((s) => s.value).filter(Boolean);
-  if (!players.length && role !== 'player') { toast('AI 플레이어를 한 명 이상 골라 주세요'); return; }
+function submitSetup() {
+  const f = new FormData(form());
+  const r = role();
+  const players = $$('[data-player]').map((s) => s.value).filter(Boolean);
   let userChar = null;
-  if (role === 'player') {
+  if (r === 'player') {
     if (f.get('aiChar')) userChar = { hint: f.get('charHint') };
     else {
-      if (!String(f.get('charName')).trim()) { toast('캐릭터 이름을 적어 주세요 (또는 AI에게 맡기기)'); return; }
-      const stats = Object.fromEntries([...document.querySelectorAll('[data-stat]')].map((i) => [i.dataset.stat, Number(i.value || 0)]));
+      const stats = Object.fromEntries($$('[data-stat]').map((i) => [i.dataset.stat, Number(i.value || 0)]));
       userChar = {
         name: f.get('charName'),
         concept: f.get('charConcept'),
         background: f.get('charBackground'),
         items: String(f.get('charItems') || '').split(',').map((x) => x.trim()).filter(Boolean),
         ...(ruleMeta()?.statKind === 'score' ? { scores: stats } : { stats }),
-        ...Object.fromEntries([...document.querySelectorAll('[data-field]')].map((i) => [i.dataset.field, i.value])),
+        ...Object.fromEntries($$('[data-field]').map((i) => [i.dataset.field, i.value])),
       };
     }
   }
   api('/api/campaign', {
     rules: f.get('rules'), premise: f.get('premise'), tone: f.get('tone'), targetRounds: Number(f.get('targetRounds')),
-    userName: f.get('userName'), userRole: role, gm: f.get('gm'), players, userChar,
+    userName: f.get('userName'), userRole: r, gm: f.get('gm'), players, userChar,
   });
   secretsOpen = false;
   log = [];
   $('#log').innerHTML = '';
+  closeSheet();
+  closeDrawer();
   $('#setup').close();
 }
 
 // ---------------------------------------------------------------------------
 // Events
 
-$('#newBtn').onclick = () => openSetup();
+$('#newBtn').onclick = openSetup;
+$('#newBtn2').onclick = () => { closeDrawer(); openSetup(); };
+$('#menuBtn').onclick = () => openDrawer();
+$('#storyBtn').onclick = () => openDrawer('scene');
+$('#closeSide').onclick = closeDrawer;
+$('#scrim').onclick = closeDrawer;
+$('#sheetBack').onclick = closeSheet;
+$('#pauseBtn').onclick = () => api('/api/pause', { paused: !camp()?.paused });
 $('#setupCancel').onclick = () => $('#setup').close();
-$('#setupForm').addEventListener('submit', submitSetup);
-$('#setupForm').addEventListener('change', (e) => {
-  if (e.target.name === 'userRole' || e.target.name === 'aiChar') updateRole();
+$('#stepBack').onclick = () => { step = Math.max(0, step - 1); showStep(); };
+$('#stepNext').onclick = () => {
+  if (!stepOk()) return;
+  if (step === steps().length - 1) submitSetup();
+  else { step++; showStep(); }
+};
+form().addEventListener('submit', (e) => e.preventDefault());
+form().addEventListener('change', (e) => {
+  if (e.target.name === 'userRole' || e.target.name === 'aiChar') { updateRole(); showStep(); }
   if (e.target.name === 'rules') renderRuleFields();
   if (e.target.dataset.stat) updateBudget();
 });
-$('#setupForm').addEventListener('input', (e) => { if (e.target.dataset.stat) updateBudget(); });
+form().addEventListener('input', (e) => { if (e.target.dataset.stat) updateBudget(); });
 $('#presets').addEventListener('click', (e) => {
   const p = e.target.closest('[data-premise]');
-  if (p) $('#setupForm').premise.value = p.dataset.premise;
+  if (p) form().premise.value = p.dataset.premise;
 });
-$('#pauseBtn').onclick = () => api('/api/pause', { paused: !state?.campaign?.paused });
-$('#passBtn').onclick = () => api('/api/pass');
-$('#modes').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-mode]');
-  if (!b) return;
-  mode = b.dataset.mode;
-  renderComposer();
-  $('#input').focus();
+
+$('#party').addEventListener('click', (e) => {
+  const s = e.target.closest('[data-seat]');
+  if (!s) return;
+  if (s.dataset.seat === 'gm') openDrawer('scene');
+  else openSheet(s.dataset.seat);
 });
+$('#tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tab]');
+  if (b) selectTab(b.dataset.tab);
+});
+$('#peekBtn').onclick = () => { secretsOpen = !secretsOpen; renderSecrets(); };
+
 $('#turnbar').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-roll]');
-  if (b) { b.disabled = true; api('/api/roll', { id: b.dataset.roll }); return; }
+  if (e.target.closest('[data-pass]')) api('/api/pass');
+  if (e.target.closest('[data-resume]')) api('/api/pause', { paused: false });
+});
+
+$('#actionSheet').addEventListener('click', (e) => {
+  const roll = e.target.closest('[data-roll]');
+  if (roll) { roll.disabled = true; api('/api/roll', { id: roll.dataset.roll }); return; }
   const opt = e.target.closest('.opt');
   if (opt) {
     const box = opt.closest('[data-choice]');
     const count = Number(box.dataset.count);
+    if (count === 1) box.querySelectorAll('.opt.on').forEach((x) => { if (x !== opt) x.classList.remove('on'); });
     opt.classList.toggle('on');
     const on = [...box.querySelectorAll('.opt.on')];
     // Picking past the limit drops the earliest pick.
     if (on.length > count) on.find((x) => x !== opt).classList.remove('on');
+    box.querySelectorAll('.opt').forEach((x) => x.setAttribute('aria-pressed', x.classList.contains('on')));
     box.querySelector('[data-confirm]').disabled = box.querySelectorAll('.opt.on').length !== count;
     const t = box.querySelector('.choiceText');
-    if (t) t.hidden = !box.querySelector(`.opt.on[data-i="${t.dataset.for}"]`);
+    if (t) {
+      t.hidden = !box.querySelector(`.opt.on[data-i="${t.dataset.for}"]`);
+      if (!t.hidden) t.querySelector('textarea').focus();
+    }
     return;
   }
   const ok = e.target.closest('[data-confirm]');
   if (ok) {
     const box = ok.closest('[data-choice]');
     ok.disabled = true;
-    api('/api/choose', { id: ok.dataset.confirm, picks: [...box.querySelectorAll('.opt.on')].map((x) => Number(x.dataset.i)), text: box.querySelector('.choiceText input')?.value || '' });
+    api('/api/choose', { id: ok.dataset.confirm, picks: [...box.querySelectorAll('.opt.on')].map((x) => Number(x.dataset.i)), text: box.querySelector('.choiceText textarea')?.value || '' });
   }
+});
+
+$('#modes').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-mode]');
+  if (!b) return;
+  const all = $$('#modes [data-mode]').map((x) => x.dataset.mode);
+  // The single visible button on a phone flips between modes.
+  mode = b.dataset.mode === mode && all.length > 1 ? all[(all.indexOf(mode) + 1) % all.length] : b.dataset.mode;
+  renderComposer();
+  $('#input').focus();
 });
 $('#moveChips').addEventListener('click', (e) => {
   const b = e.target.closest('[data-move]');
@@ -502,24 +664,30 @@ $('#moveChips').addEventListener('click', (e) => {
   const input = $('#input');
   input.value = `[${b.dataset.move}] ${input.value.replace(/^\s*\[[^\]]*\]\s*/, '')}`;
   input.focus();
+  autosize();
 });
+function autosize() {
+  const t = $('#input');
+  t.style.height = 'auto';
+  t.style.height = `${Math.min(t.scrollHeight + 2, 140)}px`;
+}
+$('#input').addEventListener('input', autosize);
 $('#composer').addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = $('#input').value.trim();
   if (!text) return;
   const r = await api('/api/post', { mode, text });
-  if (r.ok) $('#input').value = '';
+  if (r.ok) { $('#input').value = ''; autosize(); }
 });
 $('#input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#composer').requestSubmit(); }
+  // Enter sends on a keyboard; on a phone the return key makes a new line.
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !mobile()) { e.preventDefault(); $('#composer').requestSubmit(); }
 });
-$('#tabs').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-tab]');
-  if (!b) return;
-  document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x === b));
-  document.querySelectorAll('.tabbody').forEach((x) => { x.hidden = x.id !== `tab-${b.dataset.tab}`; });
-  if (b.dataset.tab === 'secrets') renderSecrets();
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (!$('#sheetPage').hidden) closeSheet();
+  else if (document.body.classList.contains('drawer-open')) closeDrawer();
 });
-$('#peekBtn').onclick = () => { secretsOpen = !secretsOpen; renderSecrets(); };
+matchMedia('(max-width: 899px)').addEventListener('change', () => { actionKey = null; renderActionSheet(); });
 
 connect();
