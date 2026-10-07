@@ -1,0 +1,14 @@
+{
+  "name": "what-do-you-do",
+  "version": "0.1.0",
+  "description": "LLM TRPG simulator: AI GM and AI players around one table, through the CLIs you are logged into.",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node server.mjs",
+    "demo": "WDYD_DEMO=1 node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "license": "MIT"
+}

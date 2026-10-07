@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>What Do You Do?</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">🎲 <b>What Do You Do?</b></div>
+    <div class="title" id="campaignTitle">테이블 준비 중</div>
+    <div class="pill" id="phasePill"></div>
+    <div class="spacer"></div>
+    <button id="pauseBtn" class="ghost" hidden>⏸ 멈춤</button>
+    <button id="newBtn">＋ 새 캠페인</button>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <main class="layout">
+    <aside class="party" id="party"></aside>
+
+    <section class="table">
+      <div class="log" id="log"></div>
+      <div class="turnbar" id="turnbar" hidden></div>
+      <form class="composer" id="composer" autocomplete="off">
+        <div class="modes" id="modes">
+          <button type="button" data-mode="declare" class="on">🗡 선언</button>
+          <button type="button" data-mode="ooc">💬 잡담</button>
+        </div>
+        <textarea id="input" rows="2" placeholder='"대사는 따옴표로" 행동은 그냥 쓰기 · /r 2d6+1 로 주사위'></textarea>
+        <div class="actions">
+          <button type="button" id="passBtn" class="ghost" title="이번 라운드는 지켜보기">넘기기</button>
+          <button type="submit" id="sendBtn">보내기</button>
+        </div>
+      </form>
+    </section>
+
+    <aside class="side">
+      <nav class="tabs" id="tabs">
+        <button data-tab="scene" class="on">장면</button>
+        <button data-tab="sheets">캐릭터</button>
+        <button data-tab="secrets">비밀</button>
+        <button data-tab="help">도움말</button>
+      </nav>
+      <div class="tabbody" id="tab-scene"></div>
+      <div class="tabbody" id="tab-sheets" hidden></div>
+      <div class="tabbody" id="tab-secrets" hidden>
+        <p class="muted">GM의 비밀 메모와 AI 플레이어들의 개인 메모예요. 플레이어로 참가 중이라면 스포일러 주의!</p>
+        <button id="peekBtn" class="ghost">👁 엿보기</button>
+        <div id="secretsBody"></div>
+      </div>
+      <div class="tabbody" id="tab-help" hidden>
+        <h3>진행 방식</h3>
+        <ol>
+          <li><b>GM 서술</b> — GM이 장면을 묘사하고 묻습니다. "어떻게 하시겠습니까?"</li>
+          <li><b>선언</b> — 플레이어들이 차례로 캐릭터의 대사·행동을 선언합니다. AI는 앞사람 선언을 보고 움직여요.</li>
+          <li><b>판정</b> — GM이 필요한 판정을 고르면 서버가 주사위를 굴립니다 (d20 + 보정치 ≥ DC).</li>
+          <li><b>결과</b> — GM이 결과를 서술하고 다음 라운드로.</li>
+        </ol>
+        <h3>입력</h3>
+        <ul>
+          <li><code>"여기서 기다려." 카엘은 문을 살핀다</code> → 대사 + 행동</li>
+          <li><b>잡담</b> 모드는 캐릭터가 아닌 플레이어로서 하는 말(OOC)</li>
+          <li><code>/r 2d6+1</code>, <code>/r 4d6kh3</code> — 자유 주사위</li>
+        </ul>
+        <h3>GM으로 참가했다면</h3>
+        <ul>
+          <li>입력이 곧 서술이고, 보내면 다음 라운드가 시작돼요.</li>
+          <li><code>/check 카엘 민첩 15 [유리|불리]</code></li>
+          <li><code>/hp 카엘 -3</code> · <code>/scene 제목 | 설명</code> · <code>/end</code></li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <dialog id="setup">
+    <form id="setupForm" method="dialog">
+      <h2>새 캠페인</h2>
+      <label>전제 (어떤 이야기?)</label>
+      <div class="presets" id="presets"></div>
+      <textarea name="premise" rows="3" required placeholder="예: 안개 낀 항구 도시에서 연쇄 실종 사건을 쫓는 코즈믹 호러"></textarea>
+      <div class="row">
+        <div><label>분위기</label><input name="tone" placeholder="예: 진지하고 음산하게 / 가볍고 유쾌하게"></div>
+        <div class="narrow"><label>목표 라운드</label><input name="targetRounds" type="number" min="4" max="60" value="12"></div>
+      </div>
+
+      <div class="row">
+        <div class="narrow"><label>내 이름</label><input name="userName" value="방장"></div>
+        <div>
+          <label>나는…</label>
+          <div class="seg" id="roleSeg">
+            <label><input type="radio" name="userRole" value="player" checked> 플레이어</label>
+            <label><input type="radio" name="userRole" value="spectator"> 관전</label>
+            <label><input type="radio" name="userRole" value="gm"> GM</label>
+          </div>
+        </div>
+      </div>
+
+      <fieldset id="charBox">
+        <legend>내 캐릭터</legend>
+        <label class="inline"><input type="checkbox" name="aiChar"> AI GM이 대신 만들어 주기</label>
+        <div id="charManual">
+          <div class="row">
+            <div class="narrow"><label>이름</label><input name="charName" placeholder="카엘"></div>
+            <div><label>콘셉트</label><input name="charConcept" placeholder="빚에 쫓기는 몰락 귀족 검사"></div>
+          </div>
+          <label>외모 · 성격 · 배경 (자유)</label>
+          <input name="charBackground" placeholder="짧은 흑발, 무뚝뚝하지만 정이 많다. 사라진 동생을 찾고 있다.">
+          <label>능력치 <span class="muted" id="statBudget"></span></label>
+          <div class="stats" id="statInputs"></div>
+          <label>소지품 (쉼표로)</label>
+          <input name="charItems" placeholder="낡은 장검, 밧줄, 치료 물약">
+        </div>
+        <div id="charHintBox" hidden>
+          <label>원하는 캐릭터 (선택)</label>
+          <input name="charHint" placeholder="예: 겁 많은 견습 마법사">
+        </div>
+      </fieldset>
+
+      <div class="row">
+        <div id="gmBox"><label>GM</label><select name="gm" id="gmSelect"></select></div>
+      </div>
+      <label>AI 플레이어</label>
+      <div class="players" id="playerSelects"></div>
+      <p class="muted" id="availNote"></p>
+
+      <div class="dlgActions">
+        <button type="button" class="ghost" id="setupCancel">취소</button>
+        <button type="submit" id="setupGo">🎲 시작</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

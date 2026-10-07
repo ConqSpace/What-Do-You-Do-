@@ -1,0 +1,20 @@
+{
+  "port": 8420,
+  "userName": "방장",
+  "demo": false,
+  "declareMode": "sequential",
+  "waitForUser": true,
+  "targetRounds": 12,
+  "autoPauseRounds": 8,
+  "maxInFlight": 3,
+  "historyWindow": 40,
+  "turnTimeoutSec": 150,
+  "bins": {},
+  "backends": {
+    "claude": { "model": "sonnet" },
+    "codex": { "model": "gpt-6-sol", "effort": "low" },
+    "grok": { "model": "grok-4.7", "effort": "low" },
+    "agy": { "model": "gemini-3.8-flash-medium" }
+  },
+  "gmModel": { "claude": "opus" }
+}
