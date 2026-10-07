@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { Backends, killAll, BACKENDS } from './lib/backends.mjs';
 import { Store } from './lib/store.mjs';
 import { Engine } from './lib/engine.mjs';
+import { builderInfo } from './lib/builder.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const HOME_DIR = process.env.WDYD_HOME ? path.resolve(process.env.WDYD_HOME) : ROOT;
@@ -100,6 +101,7 @@ async function handleApi(req, res, url) {
   if (route === 'GET /api/state') return sendJson(res, 200, engine.view());
   if (route === 'GET /api/secrets') return sendJson(res, 200, engine.secrets());
   if (route === 'GET /api/log') return sendJson(res, 200, engine.logTail(5000));
+  if (route === 'GET /api/builder') return sendJson(res, 200, builderInfo(url.searchParams.get('rules') || engine.c?.rules));
   if (req.method !== 'POST') return sendJson(res, 404, { error: 'not found' });
   if (!trustedPost(req)) return sendJson(res, 403, { error: 'forbidden' });
   let body;
@@ -112,6 +114,9 @@ async function handleApi(req, res, url) {
     case '/api/roll': err = engine.userRollCheck(body.id); break;
     case '/api/choose': err = engine.userChoose(body.id, body.picks, body.text); break;
     case '/api/pause': engine.setPaused(!!body.paused); break;
+    case '/api/builder/draft': err = engine.builderSave(body.draft); break;
+    case '/api/builder/roll': err = engine.builderRoll(body.name); break;
+    case '/api/builder/finish': err = engine.builderFinish(body); break;
     default: return sendJson(res, 404, { error: 'not found' });
   }
   return sendJson(res, err ? 400 : 200, err ? { error: err } : { ok: true });

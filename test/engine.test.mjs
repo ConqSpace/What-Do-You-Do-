@@ -318,3 +318,75 @@ test('clue paths: the GM sees each conclusion\'s paths and is warned once when o
   assert.equal(secret.blocked, true);
   assert.equal(secret.support.find((s) => s.clue === '장부').status, 'lost');
 });
+
+test('character builder: the AI players make theirs, then the table waits for the human', async () => {
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'player', players: ['mock', 'mock'] });
+  assert.ok(engine.view().campaign.builder, 'no character given: the human builds one');
+  await until(() => engine.c.characters.p1 && engine.c.characters.p2);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(engine.c.prep.step, 'chars', 'waits for the human');
+
+  assert.equal(engine.builderSave({ page: 3, class: '도둑' }), null);
+  assert.deepEqual(engine.view().campaign.builder.draft, { page: 3, class: '도둑' });
+  assert.equal(engine.builderRoll('근력'), '이 룰은 특성치를 굴리지 않아요');
+  assert.equal(engine.builderFinish({ char: { class: '도둑' } }), '이름을 정해 주세요');
+  const scores = { 근력: 8, 민첩: 16, 체력: 12, 지능: 13, 지혜: 9, 매력: 15 };
+  assert.equal(engine.builderFinish({ char: { name: '미로', class: '도둑', scores, bonds: [{ with: 'p1', text: '루나를 믿을 수 없다' }] } }), null);
+  const ch = engine.c.characters.user;
+  assert.equal(ch.class, '도둑');
+  assert.deepEqual(ch.scores, scores);
+  assert.equal(ch.bonds[0].text, '루나를 믿을 수 없다');
+  assert.equal(engine.view().campaign.builder, null);
+  assert.match(engine.builderSave({}), /만들 수 없어요/);
+  await until(() => engine.c.phase === 'declare');
+  engine.setPaused(true);
+});
+
+test('character builder: the rest left to the GM keeps what the human chose', async () => {
+  const { engine } = table();
+  let turn = '';
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, brief, t, ctx) => {
+    if (kind === 'character' && seat.key === 'maker') turn = t;
+    return orig(seat, kind, brief, t, ctx);
+  };
+  engine.newCampaign({ premise: '학교 괴담', userRole: 'player', players: ['mock'] });
+  assert.equal(engine.builderFinish({ char: { name: '한서진', concept: '괴담을 취재하는 신문부원' }, delegate: true, hint: '겁이 많다' }), null);
+  assert.equal(engine.view().campaign.builder, null);
+  await until(() => engine.c.characters.user);
+  assert.equal(engine.c.characters.user.name, '한서진');
+  assert.equal(engine.c.characters.user.concept, '괴담을 취재하는 신문부원');
+  assert.match(turn, /겁이 많다/);
+  assert.match(turn, /신문부원/);
+  engine.setPaused(true);
+});
+
+test('character builder: CoC characteristics come from server rolls, or valid quick-fire / point buy', async () => {
+  const { engine } = table();
+  engine.newCampaign({ rules: 'coc7', premise: 'x', userRole: 'player', players: ['mock'] });
+  assert.equal(engine.builderRoll('지능'), null);
+  assert.equal(engine.builderRoll('지능'), '이미 굴렸어요');
+  assert.equal(engine.builderRoll('마법'), '없는 특성치예요');
+  const int = engine.c.prep.builder.rolls.지능;
+  assert.ok(int >= 40 && int <= 90);
+  assert.equal(engine.view().campaign.builder.rolls.지능, int);
+
+  const all = (v) => Object.fromEntries(['근력', '건강', '크기', '민첩', '외모', '지능', '정신', '교육'].map((k) => [k, v]));
+  assert.match(engine.builderFinish({ char: { name: '오필리아', method: 'quick', stats: all(50) } }), /빠른 배분/);
+  assert.match(engine.builderFinish({ char: { name: '오필리아', method: 'point', stats: all(50) } }), /460/);
+  // The page cannot pick its own numbers: 'roll' uses the server's rolls, luck too.
+  assert.equal(engine.builderFinish({ char: { name: '오필리아', occupation: '간호사', method: 'roll', stats: all(90), luck: 99 } }), null);
+  const ch = engine.c.characters.user;
+  assert.equal(ch.chars.지능, int);
+  assert.equal(ch.luck, engine.c.prep.builder.rolls.행운);
+  assert.ok(Object.values(ch.chars).every((v) => v >= 15 && v <= 90));
+  engine.setPaused(true);
+
+  const { engine: e2 } = table();
+  e2.newCampaign({ rules: 'coc7', premise: 'x', userRole: 'player', players: ['mock'] });
+  const quick = { 근력: 40, 건강: 50, 크기: 50, 민첩: 50, 외모: 60, 지능: 60, 정신: 70, 교육: 80 };
+  assert.equal(e2.builderFinish({ char: { name: '잭', occupation: '사립탐정', method: 'quick', stats: quick } }), null);
+  assert.deepEqual(e2.c.characters.user.chars, quick);
+  e2.setPaused(true);
+});

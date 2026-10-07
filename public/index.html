@@ -121,6 +121,27 @@
     <div class="pagebody" id="sheetBody"></div>
   </section>
 
+  <section class="page" id="buildPage" hidden aria-label="캐릭터 만들기">
+    <header class="top">
+      <button class="icon" id="buildBack" aria-label="테이블 보기"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <div class="titles"><div class="title plain">캐릭터 만들기</div><div class="subtitle" id="buildStep"></div></div>
+      <span class="muted" id="buildCount"></span>
+    </header>
+    <div class="stepbar" id="buildBar" aria-hidden="true"></div>
+    <div class="buildwrap">
+      <div class="buildmain" id="buildMain" tabindex="-1"></div>
+      <details class="buildside" id="buildSide">
+        <summary id="buildMini"></summary>
+        <div id="buildSideBody"></div>
+      </details>
+    </div>
+    <footer class="buildfoot">
+      <button type="button" class="ghost" id="buildPrev">이전</button>
+      <button type="button" class="ghost" id="buildRest">나머지는 GM에게</button>
+      <button type="button" id="buildNext">다음</button>
+    </footer>
+  </section>
+
   <dialog id="setup">
     <form id="setupForm" method="dialog" novalidate>
       <header class="dlghead">
@@ -153,35 +174,6 @@
           <input id="tone" name="tone" placeholder="비워 두면 GM이 정해요 · 예: 진지하고 음산하게">
           <label for="userName">내 이름</label>
           <input id="userName" name="userName" value="방장">
-        </section>
-
-        <section class="step" data-step="char" hidden>
-          <h2 class="q">어떤 캐릭터로 할래요?</h2>
-          <p class="muted">하나 고르면 능력치와 소지품까지 채워져요.</p>
-          <fieldset class="rulecards archcards" id="archCards"><legend class="sr">캐릭터</legend></fieldset>
-          <div class="presets"><button type="button" class="dice" id="archRoll">🎲 다른 캐릭터</button></div>
-          <div id="charManual">
-            <label for="charName">이름</label>
-            <div class="namebox"><input id="charName" name="charName" placeholder="카엘"><button type="button" class="dice" id="nameRoll" aria-label="무작위 이름">🎲</button></div>
-            <details class="more">
-              <summary>직접 고치기 <span class="muted">콘셉트 · 능력치 · 소지품</span></summary>
-              <div class="morebody">
-              <label for="charConcept">콘셉트</label>
-              <input id="charConcept" name="charConcept" placeholder="빚에 쫓기는 몰락 귀족 검사">
-              <div class="row" id="ruleFields" hidden></div>
-              <label for="charBackground">외모 · 성격 · 배경</label>
-              <input id="charBackground" name="charBackground" placeholder="짧은 흑발, 무뚝뚝하지만 정이 많다. 사라진 동생을 찾고 있다.">
-              <label>능력치 <span class="muted" id="statBudget"></span></label>
-              <div class="stats" id="statInputs"></div>
-              <label for="charItems">소지품 (쉼표로)</label>
-              <input id="charItems" name="charItems" placeholder="낡은 장검, 밧줄, 치료 물약">
-              </div>
-            </details>
-          </div>
-          <div id="charHintBox" hidden>
-            <label for="charHint">원하는 캐릭터 (선택)</label>
-            <input id="charHint" name="charHint" placeholder="예: 겁 많은 견습 마법사">
-          </div>
         </section>
 
         <section class="step" data-step="seats" hidden>

@@ -2,7 +2,7 @@
 // Mobile first: avatar strip, log, composer; the story panel is a drawer, rolls and
 // choices come up in a bottom sheet, a character sheet is a full page.
 
-import { ARCHETYPES } from './archetypes.js';
+import { initBuilder, renderBuilder, builderNeeded, openBuilder } from './builder.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -69,7 +69,6 @@ function randomStory(rules, current) {
     if (premise !== current) return { premise, tone: any(g.tones), genre };
   }
 }
-const shuffle = (a) => a.map((x) => [Math.random(), x]).sort((p, q) => p[0] - q[0]).map(([, x]) => x);
 const NAME_KEY = 'wdyd.userName';
 const loadName = () => { try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; } };
 const saveName = (v) => { try { localStorage.setItem(NAME_KEY, v); } catch {} };
@@ -437,6 +436,8 @@ function renderTurnbar() {
   let html = '';
   if (c?.paused) {
     html = '<span class="grow">멈춤 상태예요.</span><button type="button" data-resume>재개</button>';
+  } else if (c && builderNeeded()) {
+    html = '<span class="grow">내 캐릭터를 만들 차례예요. 다 만들 때까지 테이블이 기다려요.</span><button type="button" data-build>캐릭터 만들기</button>';
   } else if (c && state.phase !== 'ended') {
     const thinking = state.seats.filter((s) => s.status === 'thinking').map((s) => (s.key === 'gm' ? gmName() : charName(s.key)));
     const myTurn = state.phase === 'declare' && seatOf('user')?.status === 'waiting';
@@ -532,6 +533,7 @@ function renderState() {
   renderActionSheet();
   renderComposer();
   if (secretsOpen && !$('#tab-secrets').hidden) renderSecrets();
+  renderBuilder();
 }
 
 function renderAll() {
@@ -543,16 +545,14 @@ function renderAll() {
 // ---------------------------------------------------------------------------
 // Setup wizard
 
-const STEP_NAME = { rules: '룰 고르기', story: '이야기 정하기', char: '캐릭터 만들기', seats: '자리 배치' };
+const STEP_NAME = { rules: '룰 고르기', story: '이야기 정하기', seats: '자리 배치' };
 let step = 0;
 let setupRules = 'dw';
-let storyGenre = null; // genre of the premise when it came from a preset or the 🎲 (d20 cards follow it)
-let hand = { key: '', cards: [] }; // the character cards dealt for the current rules and genre
-let autoName = ''; // the name a card filled in (replaced when another card is picked)
+let storyGenre = null; // genre of the premise when it came from a preset or the 🎲 (the builder's d20 cards follow it)
 const form = () => $('#setupForm');
 const ruleMeta = () => state?.rulesets?.[setupRules] || state?.rulesets?.d20;
 const role = () => new FormData(form()).get('userRole');
-const steps = () => ['rules', 'story', role() === 'player' ? 'char' : null, 'seats'].filter(Boolean);
+const steps = () => ['rules', 'story', 'seats'];
 
 function openSetup() {
   const avail = state?.available || {};
@@ -575,8 +575,7 @@ function openSetup() {
   $('#rulesSeg').innerHTML = '<legend class="sr">룰 시스템</legend>' + rs.map((r) => `<label class="rulecard"><input type="radio" name="rules" value="${r.id}"${r.id === setupRules ? ' checked' : ''}>
     <span class="rc"><span class="rn">${esc(r.label)}</span><span class="rd">${esc(r.blurb || '')}</span><span class="rt">${(r.tags || []).map((t) => `<span>${esc(t)}</span>`).join('')}</span></span></label>`).join('');
   step = 0;
-  hand = { key: '', cards: [] };
-  renderRuleFields();
+  renderRuleLabels();
   updateRole();
   showStep();
   $('#setupCancel').hidden = !camp();
@@ -588,12 +587,11 @@ function showStep() {
   step = Math.min(step, list.length - 1);
   const cur = list[step];
   $$('.step').forEach((s) => { s.hidden = s.dataset.step !== cur; });
-  if (cur === 'char') dealCards();
   $('#stepBar').innerHTML = list.map((_, i) => `<span class="${i <= step ? 'on' : ''}"></span>`).join('');
   $('#stepCount').textContent = `${step + 1} / ${list.length}`;
   $('#stepBack').hidden = step === 0;
   const last = step === list.length - 1;
-  $('#stepNext').textContent = last ? '시작' : `다음 · ${STEP_NAME[list[step + 1]]}`;
+  $('#stepNext').textContent = last ? (role() === 'player' ? '시작 · 캐릭터 만들기' : '시작') : `다음 · ${STEP_NAME[list[step + 1]]}`;
   $('.dlgbody').scrollTop = 0;
 }
 
@@ -601,13 +599,12 @@ function stepOk() {
   const cur = steps()[step];
   const f = new FormData(form());
   if (cur === 'story' && role() === 'gm' && !String(f.get('premise') || '').trim()) { toast('직접 GM을 보니 어떤 이야기인지 한 줄 적어 주세요 (위 예시를 눌러도 돼요)'); $('#premise').focus(); return false; }
-  if (cur === 'char' && f.get('arch') !== 'ai' && !String(f.get('charName') || '').trim()) { toast('캐릭터 이름을 적어 주세요 (🎲를 눌러도 돼요)'); $('#charName').focus(); return false; }
   if (cur === 'seats' && role() !== 'player' && !$$('[data-player]').some((s) => s.value)) { toast('AI 플레이어를 한 명 이상 골라 주세요'); return false; }
   return true;
 }
 
-// Stat inputs and rule-specific fields (DW class/alignment, CoC occupation/skills).
-function renderRuleFields() {
+// Seat names follow the rules (CoC: 키퍼 / 탐사자).
+function renderRuleLabels() {
   setupRules = new FormData(form()).get('rules') || setupRules;
   const m = ruleMeta();
   if (!m) return;
@@ -615,125 +612,21 @@ function renderRuleFields() {
   $$('[data-role-label="player"]').forEach((x) => { x.textContent = m.playerName || '플레이어'; });
   $$('[data-role-label="gm"]').forEach((x) => { x.textContent = m.gmName || 'GM'; });
   $('#gmLabel').textContent = m.gmName || 'GM';
-  $('#statInputs').classList.toggle('eight', m.stats.length === 8);
-  if (m.statKind === 'score') {
-    $('#statInputs').innerHTML = m.stats.map((s, i) => `<div>${s}<select data-stat="${s}" aria-label="${s}">${m.scores.map((v) => `<option${v === m.statDefaults[i] ? ' selected' : ''}>${v}</option>`).join('')}</select></div>`).join('');
-  } else {
-    $('#statInputs').innerHTML = m.stats.map((s, i) => `<div>${s}<input type="number" inputmode="numeric" min="${m.statMin}" max="${m.statMax}" value="${m.statDefaults[i]}" data-stat="${s}" aria-label="${s}"></div>`).join('');
-  }
-  const fields = m.fields || [];
-  $('#ruleFields').hidden = !fields.length;
-  $('#ruleFields').innerHTML = fields.map((fd) => `<div><label for="rf-${fd.name}">${esc(fd.label)}</label>${fd.options && !fd.free
-    ? `<select id="rf-${fd.name}" data-field="${fd.name}">${fd.options.map((o) => `<option>${esc(o)}</option>`).join('')}</select>`
-    : `<input id="rf-${fd.name}" data-field="${fd.name}" placeholder="${esc(fd.placeholder || '')}"${fd.options ? ` list="dl-${fd.name}"` : ''}>${fd.options ? `<datalist id="dl-${fd.name}">${fd.options.map((o) => `<option value="${esc(o)}">`).join('')}</datalist>` : ''}`}</div>`).join('');
-  updateBudget();
-}
-
-// Character cards: three ready-made characters for the rules (d20: for the premise's
-// genre when known), plus "let the GM make one". Picking a card fills the form below.
-function archPool() {
-  const all = ARCHETYPES[setupRules] || [];
-  const same = all.filter((a) => a.genre && a.genre === storyGenre);
-  return same.length >= 3 ? same : all;
-}
-
-function dealCards(fresh) {
-  const key = `${setupRules}/${storyGenre || ''}`;
-  if (!fresh && hand.key === key) return;
-  const pool = archPool();
-  const prev = hand.key === key ? hand.cards : [];
-  // A new hand prefers cards not just shown, and characters of different genres.
-  const ordered = shuffle(pool).sort((a, b) => prev.includes(a.id) - prev.includes(b.id));
-  const cards = [];
-  for (const a of ordered) if (cards.length < 3 && !cards.some((c) => c.genre && c.genre === a.genre)) cards.push(a);
-  for (const a of ordered) if (cards.length < 3 && !cards.includes(a)) cards.push(a);
-  hand = { key, cards: cards.map((a) => a.id) };
-  const m = ruleMeta();
-  const top = (a) => Object.entries(a.scores || a.stats || {}).sort((x, y) => y[1] - x[1]).slice(0, 2)
-    .map(([k, v]) => `${k} ${m?.statKind === 'mod' ? (v >= 0 ? `+${v}` : v) : v}`);
-  $('#archCards').innerHTML = '<legend class="sr">캐릭터</legend>' + cards.map((a, i) => `<label class="rulecard"><input type="radio" name="arch" value="${a.id}"${i === 0 ? ' checked' : ''}>
-    <span class="rc"><span class="rn">${a.icon} ${esc(a.title)}</span><span class="rd">${esc(a.concept)}</span><span class="rt">${[a.class || a.occupation, ...top(a)].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('')}</span></span></label>`).join('')
-    + `<label class="rulecard"><input type="radio" name="arch" value="ai">
-    <span class="rc"><span class="rn">🎭 GM에게 맡기기</span><span class="rd">원하는 캐릭터를 한 줄로 적으면 GM이 능력치까지 만들어요.</span></span></label>`;
-  applyCard(cards[0]);
-  updateRole();
-}
-
-const cardOf = (id) => (ARCHETYPES[setupRules] || []).find((a) => a.id === id);
-
-function applyCard(a) {
-  if (!a) return;
-  const f = form();
-  f.charConcept.value = a.concept;
-  f.charBackground.value = a.background;
-  f.charItems.value = a.items.join(', ');
-  const vals = a.scores || a.stats || {};
-  $$('[data-stat]').forEach((i) => { if (vals[i.dataset.stat] !== undefined) i.value = vals[i.dataset.stat]; });
-  $$('[data-field]').forEach((i) => { if (a[i.dataset.field] !== undefined) i.value = a[i.dataset.field]; });
-  const name = f.charName.value.trim();
-  if (!name || name === autoName) rollName(a);
-  updateBudget();
-}
-
-function rollName(a) {
-  const names = a?.names || archPool().flatMap((x) => x.names);
-  const cur = form().charName.value.trim();
-  autoName = any(names.filter((n) => n !== cur).length ? names.filter((n) => n !== cur) : names);
-  form().charName.value = autoName;
-}
-
-function updateBudget() {
-  const m = ruleMeta();
-  if (!m) return;
-  const vals = $$('[data-stat]').map((i) => Number(i.value || 0));
-  const el = $('#statBudget');
-  if (m.statKind === 'percent') {
-    el.textContent = `(${m.statMin}~${m.statMax})`;
-    el.classList.remove('over');
-  } else if (m.statKind === 'score') {
-    const ok = [...vals].sort((a, b) => b - a).join() === m.scores.join();
-    el.textContent = `(${m.scores.join('·')}을 하나씩${ok ? '' : ' · 겹치면 서버가 다시 나눠요'})`;
-    el.classList.toggle('over', !ok);
-  } else {
-    const sum = vals.reduce((a, b) => a + b, 0);
-    el.textContent = `(${m.statMin}~+${m.statMax}, 합 ${sum} / ${m.budget}${sum !== m.budget ? ' · 서버가 맞춰 줘요' : ''})`;
-    el.classList.toggle('over', sum !== m.budget);
-  }
 }
 
 function updateRole() {
   $('#gmBox').hidden = role() === 'gm';
   $('#storyNote').hidden = role() === 'gm';
-  const ai = new FormData(form()).get('arch') === 'ai';
-  $('#charManual').hidden = ai;
-  $('#charHintBox').hidden = !ai;
 }
 
+// A player's character is made in the character builder once the campaign starts.
 function submitSetup() {
   const f = new FormData(form());
-  const r = role();
   const players = $$('[data-player]').map((s) => s.value).filter(Boolean);
-  let userChar = null;
-  if (r === 'player') {
-    if (f.get('arch') === 'ai') userChar = { hint: f.get('charHint') };
-    else {
-      const card = cardOf(f.get('arch'));
-      const stats = Object.fromEntries($$('[data-stat]').map((i) => [i.dataset.stat, Number(i.value || 0)]));
-      userChar = {
-        name: f.get('charName'),
-        concept: f.get('charConcept'),
-        background: f.get('charBackground'),
-        items: String(f.get('charItems') || '').split(',').map((x) => x.trim()).filter(Boolean),
-        ...(ruleMeta()?.statKind === 'score' ? { scores: stats } : { stats }),
-        ...Object.fromEntries($$('[data-field]').map((i) => [i.dataset.field, i.value])),
-        ...(card?.weapons ? { weapons: card.weapons } : {}),
-      };
-    }
-  }
   saveName(String(f.get('userName') || '').trim());
   api('/api/campaign', {
     rules: f.get('rules'), premise: f.get('premise'), tone: f.get('tone'),
-    userName: f.get('userName'), userRole: r, gm: f.get('gm'), players, userChar,
+    userName: f.get('userName'), userRole: role(), gm: f.get('gm'), players,
   });
   secretsOpen = false;
   log = [];
@@ -764,11 +657,8 @@ $('#stepNext').onclick = () => {
 form().addEventListener('submit', (e) => e.preventDefault());
 form().addEventListener('change', (e) => {
   if (e.target.name === 'userRole') { updateRole(); showStep(); }
-  if (e.target.name === 'arch') { applyCard(cardOf(e.target.value)); updateRole(); }
-  if (e.target.name === 'rules') renderRuleFields();
-  if (e.target.dataset.stat) updateBudget();
+  if (e.target.name === 'rules') renderRuleLabels();
 });
-form().addEventListener('input', (e) => { if (e.target.dataset.stat) updateBudget(); });
 $('#presets').addEventListener('click', (e) => {
   const b = e.target.closest('[data-preset], [data-random]');
   if (!b) return;
@@ -781,8 +671,6 @@ $('#presets').addEventListener('click', (e) => {
 });
 // A premise typed by hand has no known genre.
 $('#premise').addEventListener('input', () => { storyGenre = null; });
-$('#archRoll').onclick = () => dealCards(true);
-$('#nameRoll').onclick = () => rollName(cardOf(new FormData(form()).get('arch')));
 
 $('#party').addEventListener('click', (e) => {
   const s = e.target.closest('[data-seat]');
@@ -799,6 +687,7 @@ $('#peekBtn').onclick = () => { secretsOpen = !secretsOpen; renderSecrets(); ren
 $('#turnbar').addEventListener('click', (e) => {
   if (e.target.closest('[data-pass]')) api('/api/pass');
   if (e.target.closest('[data-resume]')) api('/api/pause', { paused: false });
+  if (e.target.closest('[data-build]')) openBuilder();
 });
 
 $('#sheetScrim').onclick = () => { sheetMin = true; placeSheet(); };
@@ -873,4 +762,5 @@ document.addEventListener('keydown', (e) => {
 });
 matchMedia('(max-width: 899px)').addEventListener('change', placeSheet);
 
+initBuilder({ $, esc, toast, api, sheetHtml, state: () => state, genre: () => storyGenre, rerender: renderState });
 connect();
