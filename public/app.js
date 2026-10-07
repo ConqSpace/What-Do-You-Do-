@@ -10,14 +10,19 @@ const OLD_TIER = { critical: 'crit', success: 'good', failure: 'bad', fumble: 'f
 const PHASE = { setup: '준비 전', prep: '캠페인 준비 중', declare: '선언', resolve: '판정 중', roll: '주사위 · 선택', 'gm-wait': 'GM 서술 대기', ended: '종료' };
 const STATUS = { thinking: '생각 중', done: '✓ 선언', waiting: '차례 대기', rolling: '굴릴 차례', choosing: '고르는 중', idle: '' };
 const DICE = { d20: 'd20', dw: '2d6', coc7: 'd100' };
+// [label, premise, tone]. The first one leaves both blank so the GM decides.
 const PRESETS = [
-  ['판타지', '국경 마을에서 사람들이 하나둘 사라지는 정통 판타지 모험'],
-  ['코즈믹 호러', '1920년대 안개 낀 항구 도시, 바다에서 건져 올린 이상한 조각상과 연쇄 실종 사건'],
-  ['던전 크롤', '고블린 떼가 점령한 드워프 폐광에서 사라진 대장장이를 구출하라'],
-  ['사이버펑크', '2089년 네오서울, 거대 기업의 데이터를 훔치는 의뢰를 받은 해커와 용병들'],
-  ['무협', '강호를 뒤흔든 비급이 사라졌다. 정파와 사파가 모두 노리는 객잔에서 벌어지는 이야기'],
-  ['학원 미스터리', '폐교 직전의 고등학교, 밤마다 불이 켜지는 옛 음악실의 비밀을 파헤치는 학생들'],
+  ['🎲 GM에게 맡기기', '', ''],
+  ['판타지', '국경 마을에서 사람들이 하나둘 사라지는 정통 판타지 모험', '어둡지만 희망이 남아 있게'],
+  ['코즈믹 호러', '1920년대 안개 낀 항구 도시, 바다에서 건져 올린 이상한 조각상과 연쇄 실종 사건', '진지하고 음산하게'],
+  ['던전 크롤', '고블린 떼가 점령한 드워프 폐광에서 사라진 대장장이를 구출하라', '거칠고 박진감 있게'],
+  ['사이버펑크', '2089년 네오서울, 거대 기업의 데이터를 훔치는 의뢰를 받은 해커와 용병들', '네온 아래 냉소적이고 건조하게'],
+  ['무협', '강호를 뒤흔든 비급이 사라졌다. 정파와 사파가 모두 노리는 객잔에서 벌어지는 이야기', '호쾌하고 비장하게'],
+  ['학원 미스터리', '폐교 직전의 고등학교, 밤마다 불이 켜지는 옛 음악실의 비밀을 파헤치는 학생들', '아련하고 오싹하게'],
 ];
+const NAME_KEY = 'wdyd.userName';
+const loadName = () => { try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; } };
+const saveName = (v) => { try { localStorage.setItem(NAME_KEY, v); } catch {} };
 const ICON = {
   pause: '<svg viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>',
@@ -508,7 +513,8 @@ function openSetup() {
   $('#availNote').textContent = real.length
     ? `찾은 CLI: ${real.map((k) => names[k]).join(', ')}. 한 AI가 GM과 플레이어를 같이 맡아도 돼요(매번 따로 불려요).`
     : 'AI CLI를 찾지 못해서 데모봇만 쓸 수 있어요.';
-  $('#presets').innerHTML = PRESETS.map(([l, p]) => `<button type="button" data-premise="${esc(p)}">${l}</button>`).join('');
+  $('#presets').innerHTML = PRESETS.map(([l, p], i) => `<button type="button" data-preset="${i}"${p ? '' : ' class="auto"'}>${l}</button>`).join('');
+  form().userName.value = loadName() || form().userName.value;
   const rs = Object.values(state?.rulesets || {});
   if (camp()?.rules) setupRules = camp().rules;
   if (!state?.rulesets?.[setupRules]) setupRules = rs[0]?.id || 'd20';
@@ -538,7 +544,7 @@ function showStep() {
 function stepOk() {
   const cur = steps()[step];
   const f = new FormData(form());
-  if (cur === 'story' && !String(f.get('premise') || '').trim()) { toast('어떤 이야기인지 한 줄 적어 주세요 (위 예시를 눌러도 돼요)'); $('#premise').focus(); return false; }
+  if (cur === 'story' && role() === 'gm' && !String(f.get('premise') || '').trim()) { toast('직접 GM을 보니 어떤 이야기인지 한 줄 적어 주세요 (위 예시를 눌러도 돼요)'); $('#premise').focus(); return false; }
   if (cur === 'char' && !f.get('aiChar') && !String(f.get('charName') || '').trim()) { toast('캐릭터 이름을 적거나 AI에게 맡겨 주세요'); $('#charName').focus(); return false; }
   if (cur === 'seats' && role() !== 'player' && !$$('[data-player]').some((s) => s.value)) { toast('AI 플레이어를 한 명 이상 골라 주세요'); return false; }
   return true;
@@ -588,6 +594,8 @@ function updateBudget() {
 
 function updateRole() {
   $('#gmBox').hidden = role() === 'gm';
+  $('#storyNote').hidden = role() === 'gm';
+  $$('#presets .auto').forEach((b) => { b.hidden = role() === 'gm'; });
   const ai = form().aiChar.checked;
   $('#charManual').hidden = ai;
   $('#charHintBox').hidden = !ai;
@@ -612,6 +620,7 @@ function submitSetup() {
       };
     }
   }
+  saveName(String(f.get('userName') || '').trim());
   api('/api/campaign', {
     rules: f.get('rules'), premise: f.get('premise'), tone: f.get('tone'),
     userName: f.get('userName'), userRole: r, gm: f.get('gm'), players, userChar,
@@ -650,8 +659,11 @@ form().addEventListener('change', (e) => {
 });
 form().addEventListener('input', (e) => { if (e.target.dataset.stat) updateBudget(); });
 $('#presets').addEventListener('click', (e) => {
-  const p = e.target.closest('[data-premise]');
-  if (p) form().premise.value = p.dataset.premise;
+  const b = e.target.closest('[data-preset]');
+  if (!b) return;
+  const [, premise, tone] = PRESETS[b.dataset.preset];
+  form().premise.value = premise;
+  form().tone.value = tone;
 });
 
 $('#party').addEventListener('click', (e) => {

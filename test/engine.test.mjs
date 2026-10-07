@@ -43,6 +43,28 @@ test('spectator campaign runs from prep to the ending', async () => {
   assert.ok(!('notes' in v.characters.p1), 'private notes stay out of the public view');
 });
 
+test('blank premise and tone: the GM makes them up while designing the world', async () => {
+  const { engine } = table();
+  let turn = '';
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, brief, t, ctx) => {
+    if (kind === 'worldbuild') turn = t;
+    return orig(seat, kind, brief, t, ctx);
+  };
+  engine.newCampaign({ premise: '  ', userRole: 'spectator', players: ['mock'] });
+  assert.equal(engine.c.premise, '');
+  await until(() => engine.c.prep.step !== 'world');
+  assert.match(turn, /"premise":/);
+  assert.match(turn, /"tone":/);
+  assert.ok(engine.c.premise.length > 0);
+  assert.ok(engine.c.tone.length > 0);
+
+  // A human GM still needs a premise; with one given, the GM is not asked for it.
+  const { engine: e2 } = table();
+  e2.newCampaign({ premise: '', userRole: 'gm', players: ['mock'] });
+  assert.ok(e2.c.premise.length > 0);
+});
+
 test('human player: GM waits for the declaration and the human rolls their own checks', async () => {
   const { engine } = table();
   engine.newCampaign({
