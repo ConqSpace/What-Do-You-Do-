@@ -217,6 +217,20 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .system { text-align: center; font-size: 13px; color: var(--muted); white-space: pre-wrap; }
 .system.effect { color: color-mix(in srgb, var(--bad) 70%, var(--text)); }
 .system.clue { color: var(--accent); }
+.whisper {
+  border: 1px dashed color-mix(in srgb, var(--san) 60%, var(--line)); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--san) 8%, var(--bg)); padding: 10px 14px; font-size: 14px; white-space: pre-wrap;
+}
+.whisper .tag { display: block; font-size: 12px; font-weight: 600; color: var(--san); margin-bottom: 4px; }
+.system.ledger { text-align: left; font-size: 12px; font-family: ui-monospace, monospace; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.facts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.facts li { font-size: 13px; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.facts li span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.facts .who { flex: none; font-size: 11px; padding: 0 8px; border-radius: 99px; background: var(--surface2); border: 1px solid var(--line); white-space: nowrap; }
+.facts .who.secret { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+.facts .who.all { color: var(--good); }
+.facts .who.some { color: var(--san); }
+.factgroup h4 { margin: 10px 0 2px; font-size: 13px; color: var(--muted); }
 .system.intro { text-align: left; background: var(--surface2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; color: var(--text); font-size: 14px; }
 
 /* roll cards */

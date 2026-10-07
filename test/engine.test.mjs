@@ -8,6 +8,8 @@ import { Backends } from '../lib/backends.mjs';
 import { Store } from '../lib/store.mjs';
 import { Engine } from '../lib/engine.mjs';
 import { setRng } from '../lib/dice.mjs';
+import { Ledger } from '../lib/facts.mjs';
+import { declareTurn, adjudicateTurn } from '../lib/prompts.mjs';
 
 // Scripted dice first, then real ones.
 const scripted = (seq) => (sides) => (seq.length ? seq.shift() : 1 + Math.floor(Math.random() * sides));
@@ -198,4 +200,47 @@ test('call of cthulhu: the human pushes a failed roll with a reason', async () =
   await until(() => c.round === 2);
   assert.ok(c.characters.user.ticks.includes('응급처치'));
   engine.setPaused(true);
+});
+
+test('fact ledger: secrets and other players\' whispers never reach a player\'s prompt', async () => {
+  const { engine } = table();
+  engine.newCampaign({ premise: '장부 테스트', userRole: 'spectator', players: ['mock', 'mock'], targetRounds: 30 });
+  await until(() => engine.c.phase === 'declare');
+  const c = engine.c;
+  assert.ok(new Ledger(c.facts).list.some((f) => f.p === '비밀'), 'worldbuild filled the ledger');
+  engine.setPaused(true);
+  engine.applyFacts({
+    facts: { assert: [{ fact: '단서(편지, 영주의 서명이 든 편지)', to: ['p1'] }] },
+    whispers: [{ to: 'p1', text: '너만 본다: 창밖의 그림자' }],
+  });
+  const p1 = declareTurn(c, 'p1');
+  const p2 = declareTurn(c, 'p2');
+  assert.match(p1, /단서\(편지/);
+  assert.match(p1, /창밖의 그림자/);
+  assert.doesNotMatch(p2, /단서\(편지/);
+  assert.doesNotMatch(p2, /창밖의 그림자/);
+  for (const t of [p1, p2]) assert.doesNotMatch(t, /비밀\(영주/, 'secrets stay with the GM');
+  const gm = adjudicateTurn(c);
+  assert.match(gm, /비밀\(영주, 실종자를 제물로 바친다\) \{비밀\}/);
+  assert.match(gm, /귓속말 → /);
+  engine.applyFacts({ facts: { assert: ['날씨(비)'] } });
+  assert.match(adjudicateTurn(c), /거절된 장부 변경[\s\S]*날씨\(비\)/);
+  assert.ok(!engine.view().campaign.knownFacts.some((t) => t.startsWith('비밀')), 'spectator view shows public facts only');
+  assert.ok(engine.secrets().facts.length > 5);
+});
+
+test('fact ledger: a clue told to one character is announced only to them', async () => {
+  const { engine } = table();
+  engine.newCampaign({ premise: '단서 테스트', userRole: 'spectator', players: ['mock', 'mock'], targetRounds: 30 });
+  await until(() => engine.c.phase === 'declare');
+  engine.setPaused(true);
+  const c = engine.c;
+  engine.applyFacts({ facts: { assert: [{ fact: '단서(비늘, 은회색 비늘)', to: ['p1'] }] } });
+  const notice = c.log.filter((m) => m.clue).at(-1);
+  assert.equal(notice.to, 'p1');
+  assert.match(declareTurn(c, 'p1'), /은회색 비늘/);
+  assert.doesNotMatch(declareTurn(c, 'p2'), /은회색 비늘/);
+  engine.applyFacts({ facts: { reveal: [{ fact: '단서(비늘, 은회색 비늘)', to: 'all' }] } });
+  assert.equal(c.log.filter((m) => m.clue).at(-1).to, undefined, 'revealed to all: a public notice');
+  assert.match(declareTurn(c, 'p2'), /은회색 비늘/);
 });

@@ -73,7 +73,8 @@ function connect() {
     const m = JSON.parse(e.data);
     const i = log.findIndex((x) => x.id === m.id);
     if (i >= 0) log[i] = m;
-    $(`#log [data-id="${m.id}"]`)?.replaceWith(htmlToNode(msgHtml(m, false)));
+    const html = msgHtml(m, false);
+    if (html) $(`#log [data-id="${m.id}"]`)?.replaceWith(htmlToNode(html));
   });
   es.addEventListener('msg', (e) => {
     const m = JSON.parse(e.data);
@@ -148,8 +149,20 @@ function rollHtml(m, fresh) {
     <div class="rollbody">${body}</div>${lines.join('')}</section></div>`;
 }
 
+// Whispers reach only their target; the ledger's change notes are the GM's. Spectators,
+// a human GM and anyone peeking at secrets see both.
+function hiddenFromMe(m) {
+  if (!m.to) return false;
+  if (secretsOpen) return false;
+  if (m.ledger) return true;
+  return camp()?.userRole === 'player' && m.to !== 'user';
+}
+
 function msgHtml(m, fresh) {
+  if (hiddenFromMe(m)) return '';
   switch (m.type) {
+    case 'whisper':
+      return `<div class="msg whisper"><span class="tag">${esc(gmName())}의 귓속말 → ${esc(m.to === 'user' ? '나' : charName(m.to))}</span>${esc(m.text)}</div>`;
     case 'narration':
       return `<article class="msg narration"><span class="tag">${esc(gmName())}${seatOf('gm') ? ` · ${esc(seatOf('gm').label)}` : ''}</span>${esc(m.text)}</article>`;
     case 'scene': {
@@ -171,7 +184,7 @@ function msgHtml(m, fresh) {
     case 'roll':
       return rollHtml(m, fresh);
     default: {
-      const cls = m.from === 'gm' ? ' intro' : m.effect ? ' effect' : m.clue ? ' clue' : '';
+      const cls = m.ledger ? ' ledger' : m.from === 'gm' ? ' intro' : m.effect ? ' effect' : m.clue ? ' clue' : '';
       return `<div class="msg system${cls}">${esc(m.text)}</div>`;
     }
   }
@@ -228,12 +241,17 @@ function renderStory() {
   const c = camp();
   const box = $('#tab-scene');
   if (!c) { box.innerHTML = '<p class="muted">캠페인이 없어요.</p>'; return; }
+  // Clues are 단서(이름, 내용) facts the viewer's side knows (plus the old notebook list).
+  const known = c.knownFacts || [];
+  const clues = [...(c.clues || []), ...known.filter((t) => t.startsWith('단서(')).map((t) => t.slice(3, -1).replace(', ', ' — '))];
+  const facts = known.filter((t) => !t.startsWith('단서('));
   box.innerHTML = `
     <p class="storyhead">${esc(c.title || '준비 중')}</p>
     <p class="muted">${esc(c.rulesLabel || '')} · ${esc(c.premise)}${c.tone ? ` · ${esc(c.tone)}` : ''}</p>
     ${c.pitch ? `<div class="pre">${esc(c.pitch)}</div>` : ''}
     ${c.scene?.title ? `<h3>${esc(c.scene.title)}</h3><p>${esc(c.scene.description)}</p>` : ''}
-    ${c.clues?.length ? `<h3>단서 수첩</h3><ul class="clues">${c.clues.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+    ${clues.length ? `<h3>단서 수첩</h3><ul class="clues">${clues.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+    ${facts.length ? `<h3>${c.userRole === 'player' ? '내 캐릭터가 아는 사실' : '모두가 아는 사실'}</h3><ul class="facts">${facts.map((t) => `<li><span>${esc(t)}</span></li>`).join('')}</ul>` : ''}
     ${c.foes?.length ? `<h3>적</h3>${c.foes.map((f) => `<div class="foe"><div><b>${esc(f.name)}</b> <span class="muted">${[f.armor ? `갑옷 ${f.armor}` : '', f.damage ? `피해 ${esc(f.damage)}` : '', f.attack ? `공격 ${f.attack}` : '', f.dodge ? `회피 ${f.dodge}` : ''].filter(Boolean).join(' · ')}</span></div>
       ${bar({ value: f.hp, max: f.maxHp })}<div class="muted">HP ${f.hp} / ${f.maxHp}${f.note ? ` · ${esc(f.note)}` : ''}</div></div>`).join('')}` : ''}
     ${c.summary ? `<h3>지금까지의 이야기</h3><div class="pre">${esc(c.summary)}</div>` : ''}
@@ -284,7 +302,12 @@ async function renderSecrets() {
   if (!secretsOpen) { box.innerHTML = ''; $('#peekBtn').textContent = '엿보기'; return; }
   $('#peekBtn').textContent = '가리기';
   const s = await fetch('/api/secrets').then((r) => r.json());
-  box.innerHTML = `<h3>${esc(gmName())} 비밀 메모</h3><div class="pre">${esc(s.gmNotes || '(비어 있음)')}</div>`
+  const groups = {};
+  for (const f of s.facts || []) (groups[f.p] ??= []).push(f);
+  const table = Object.entries(groups).map(([p, fs]) => `<div class="factgroup"><h4>${esc(p)}</h4><ul class="facts">${fs.map((f) => `<li><span>${esc(f.text)}</span><span class="who ${f.known === '비밀' ? 'secret' : f.known === '모두' ? 'all' : 'some'}">${esc(f.known)}</span></li>`).join('')}</ul></div>`).join('');
+  box.innerHTML = `<h3>진실 표 (사실 장부)</h3>${table || '<p class="muted">아직 비어 있어요.</p>'}`
+    + (s.rejected?.length ? `<h3>거절된 변경</h3><ul class="facts">${s.rejected.map((r) => `<li><span>${esc(r.op)}</span><span class="who secret">${esc(r.why)}</span></li>`).join('')}</ul>` : '')
+    + `<h3>${esc(gmName())} 비밀 메모</h3><div class="pre">${esc(s.gmNotes || '(비어 있음)')}</div>`
     + Object.entries(s.notes || {}).map(([k, n]) => `<h3>${esc(charName(k))}의 메모</h3><div class="pre">${esc(n || '(비어 있음)')}</div>`).join('');
 }
 
@@ -613,7 +636,7 @@ $('#tabs').addEventListener('click', (e) => {
   const b = e.target.closest('[data-tab]');
   if (b) selectTab(b.dataset.tab);
 });
-$('#peekBtn').onclick = () => { secretsOpen = !secretsOpen; renderSecrets(); };
+$('#peekBtn').onclick = () => { secretsOpen = !secretsOpen; renderSecrets(); renderLog(); };
 
 $('#turnbar').addEventListener('click', (e) => {
   if (e.target.closest('[data-pass]')) api('/api/pass');
