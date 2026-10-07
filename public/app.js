@@ -98,7 +98,7 @@ function avatar(key) {
 function msgHtml(m, fresh) {
   switch (m.type) {
     case 'narration':
-      return `<div class="msg narration"><span class="tag">GM</span>${esc(m.text)}</div>`;
+      return `<div class="msg narration"><span class="tag">${esc(state?.campaign?.gmName || 'GM')}</span>${esc(m.text)}</div>`;
     case 'scene': {
       const [title, ...rest] = m.text.split(' — ');
       return `<div class="msg scene">📍 ${esc(title)}<small>${esc(rest.join(' — '))}</small></div>`;
@@ -121,8 +121,11 @@ function msgHtml(m, fresh) {
         const label = r.label || OUTCOME[r.outcome] || '';
         const target = r.target || (r.dc ? `DC ${r.dc}` : '');
         const dice = r.dice.map((d) => `<span class="die">${d}</span>`).join('');
+        const mod = r.mod === undefined ? '' : `<span class="muted">${sign(r.mod)}</span> = <span class="total">${r.total}</span>`;
         const lines = [];
         if (r.text) lines.push(`<div class="rolltext">${esc(r.text)}${r.after ? ` <span class="muted">(${esc(r.after)})</span>` : ''}</div>`);
+        if (r.diceNote) lines.push(`<div class="rolltext muted">${esc(r.diceNote)}</div>`);
+        if (r.selfDamage) lines.push(`<div class="rolltext">🩸 받은 피해 <b>${r.selfDamage.total}</b></div>`);
         if (r.damage) lines.push(`<div class="rolltext">⚔ 피해 ${esc(r.damage.expr)} = <b>${r.damage.total}</b>${r.damage.target ? ` → ${esc(r.damage.target)}` : ''}</div>`);
         if (r.pendingChoice) lines.push('<div class="rolltext muted">선택을 기다리는 중…</div>');
         if (r.chosen?.length) lines.push(`<div class="rolltext">✔ ${r.chosen.map(esc).join(' / ')}</div>`);
@@ -130,7 +133,7 @@ function msgHtml(m, fresh) {
         if (r.why) lines.push(`<div class="rolltext muted">${esc(r.why)}</div>`);
         return `<div class="msg" data-id="${m.id}"><div class="roll tier-${tier}${fresh ? ' fresh' : ''}">
           <div class="rollhead"><span>🎲 <b>${esc(charName(r.who))}</b> · ${esc(title)}</span><span class="res">${esc(label)}</span></div>
-          <div class="rollbody">${dice}<span class="muted">${sign(r.mod)}</span> = <span class="total">${r.total}</span><span class="muted">${esc(target)}</span></div>
+          <div class="rollbody">${dice}${mod}<span class="muted">${esc(target)}</span></div>
           ${lines.join('')}</div></div>`;
       }
       return `<div class="msg"><div class="roll${fresh ? ' fresh' : ''}">🎲 <b>${esc(charName(r.who))}</b> ${esc(r.expr)} <span class="muted">${esc(r.detail)}</span> = <span class="d20">${r.total}</span></div></div>`;
@@ -180,15 +183,18 @@ function renderParty() {
     const ch = chars()[s.key];
     const status = `<div class="status ${s.status}">${STATUS[s.status] || ''}</div>`;
     if (s.key === 'gm') {
-      return `<div class="seat gm">${status}<div class="who">${avatar('gm')}<div><div class="name">게임 마스터</div><div class="sub">${esc(s.label)}</div></div></div></div>`;
+      const gmName = state.campaign.gmName === '키퍼' ? '키퍼' : '게임 마스터';
+      return `<div class="seat gm">${status}<div class="who">${avatar('gm')}<div><div class="name">${gmName}</div><div class="sub">${esc(s.label)}</div></div></div></div>`;
     }
     if (!ch) return `<div class="seat">${status}<div class="who">${avatar(s.key)}<div><div class="name">캐릭터 만드는 중…</div><div class="sub">${esc(s.label)}</div></div></div></div>`;
-    const pct = Math.round((ch.hp / ch.maxHp) * 100);
+    const tracks = (ch.sheet?.tracks || [{ label: 'HP', value: ch.hp, max: ch.maxHp }]).filter((t) => t.label === 'HP' || t.kind === 'san');
     return `<div class="seat">${status}
       <div class="who">${avatar(s.key)}<div><div class="name">${esc(ch.name)}</div><div class="sub">${esc(s.label)}</div></div></div>
       <div class="concept">${esc(ch.concept)}</div>
-      <div class="hp${pct <= 30 ? ' low' : ''}"><i style="width:${pct}%"></i></div>
-      <div class="hptext">HP ${ch.hp} / ${ch.maxHp}</div>
+      ${tracks.map((t) => {
+        const pct = Math.round((t.value / Math.max(1, t.max)) * 100);
+        return `<div class="hp${t.kind ? ` ${t.kind}` : ''}${pct <= 30 ? ' low' : ''}"><i style="width:${pct}%"></i></div><div class="hptext">${esc(t.label)} ${t.value} / ${t.max}</div>`;
+      }).join('')}
       ${ch.conditions?.length ? `<div class="conds">${ch.conditions.map((c) => `<span>${esc(c)}</span>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
@@ -203,7 +209,8 @@ function renderScene() {
     <p class="muted">${esc(c.premise)}${c.tone ? ` · ${esc(c.tone)}` : ''}</p>
     ${c.pitch ? `<div class="pre">${esc(c.pitch)}</div>` : ''}
     ${c.scene?.title ? `<h3>📍 ${esc(c.scene.title)}</h3><p>${esc(c.scene.description)}</p>` : ''}
-    ${c.foes?.length ? `<h3>적</h3>${c.foes.map((f) => `<div class="foe"><div><b>${esc(f.name)}</b> <span class="muted">${f.armor ? `갑옷 ${f.armor} · ` : ''}${f.damage ? `피해 ${esc(f.damage)}` : ''}</span></div>
+    ${c.clues?.length ? `<h3>🔎 단서 수첩</h3><ul class="clues">${c.clues.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+    ${c.foes?.length ? `<h3>적</h3>${c.foes.map((f) => `<div class="foe"><div><b>${esc(f.name)}</b> <span class="muted">${f.armor ? `갑옷 ${f.armor} · ` : ''}${f.damage ? `피해 ${esc(f.damage)}` : ''}${f.attack ? ` · 공격 ${f.attack}` : ''}${f.dodge ? ` · 회피 ${f.dodge}` : ''}</span></div>
       <div class="hp${f.hp / f.maxHp <= 0.3 ? ' low' : ''}"><i style="width:${Math.round((f.hp / f.maxHp) * 100)}%"></i></div><div class="hptext">HP ${f.hp} / ${f.maxHp}${f.note ? ` · ${esc(f.note)}` : ''}</div></div>`).join('')}` : ''}
     ${c.summary ? `<h3>지금까지의 이야기</h3><div class="pre">${esc(c.summary)}</div>` : ''}
     <h3>진행</h3><p>${esc(c.rulesLabel || '')} · 라운드 ${c.round} / 목표 ${c.targetRounds}</p>`;
@@ -258,12 +265,13 @@ function renderTurnbar() {
       for (const p of myChoices) {
         parts.push(`<div class="choice" data-choice="${p.id}" data-count="${p.count}"><div>${esc(p.prompt)}</div>
           <div class="opts">${p.options.map((o, i) => `<button type="button" class="opt" data-i="${i}">${esc(o)}</button>`).join('')}</div>
+          ${p.textFor >= 0 ? `<label class="choiceText" data-for="${p.textFor}" hidden>${esc(p.textLabel || '')}<input type="text" maxlength="200"></label>` : ''}
           <button type="button" data-confirm="${p.id}" disabled>고르기</button></div>`);
       }
     } else if (state.phase === 'roll' && c.pendingChecks.length) {
       parts.push('🎲 판정이에요!');
       for (const p of c.pendingChecks) {
-        parts.push(`<button data-roll="${p.id}">${esc(checkLabel(p))} 굴리기</button>`);
+        parts.push(`<button data-roll="${p.id}">${esc(p.label || checkLabel(p))} 굴리기</button>`);
         if (p.why) parts.push(`<span class="muted">${esc(p.why)}</span>`);
       }
     } else if (state.phase === 'declare' && seatOf('user')?.status === 'waiting') {
@@ -316,6 +324,7 @@ function renderHeader() {
 }
 
 function renderState() {
+  document.body.dataset.rules = state?.campaign?.rules || '';
   renderHeader();
   renderBanner();
   renderParty();
@@ -364,16 +373,18 @@ function renderRuleFields() {
   setupRules = new FormData($('#setupForm')).get('rules') || 'd20';
   const m = ruleMeta();
   if (!m) return;
+  $('#statInputs').style.gridTemplateColumns = `repeat(${Math.min(m.stats.length, 8) > 6 ? 4 : 6}, 1fr)`;
   if (m.statKind === 'score') {
     $('#statInputs').innerHTML = m.stats.map((s, i) => `<div>${s}<select data-stat="${s}">${m.scores.map((v) => `<option${v === m.statDefaults[i] ? ' selected' : ''}>${v}</option>`).join('')}</select></div>`).join('');
   } else {
     $('#statInputs').innerHTML = m.stats.map((s, i) => `<div>${s}<input type="number" min="${m.statMin}" max="${m.statMax}" value="${m.statDefaults[i]}" data-stat="${s}"></div>`).join('');
   }
-  $('#ruleFields').hidden = !m.classes;
-  if (m.classes) {
-    $('#setupForm').charClass.innerHTML = m.classes.map((c) => `<option>${esc(c)}</option>`).join('');
-    $('#setupForm').charAlign.innerHTML = m.alignments.map((a) => `<option>${esc(a)}</option>`).join('');
-  }
+  // Rule-specific fields: DW class/alignment, CoC occupation/skills.
+  const fields = m.fields || [];
+  $('#ruleFields').hidden = !fields.length;
+  $('#ruleFields').innerHTML = fields.map((fd) => `<div><label>${esc(fd.label)}</label>${fd.options && !fd.free
+    ? `<select data-field="${fd.name}">${fd.options.map((o) => `<option>${esc(o)}</option>`).join('')}</select>`
+    : `<input data-field="${fd.name}" placeholder="${esc(fd.placeholder || '')}"${fd.options ? ` list="dl-${fd.name}"` : ''}>${fd.options ? `<datalist id="dl-${fd.name}">${fd.options.map((o) => `<option value="${esc(o)}">`).join('')}</datalist>` : ''}`}</div>`).join('');
   updateBudget();
 }
 
@@ -382,7 +393,10 @@ function updateBudget() {
   if (!m) return;
   const vals = [...document.querySelectorAll('[data-stat]')].map((i) => Number(i.value || 0));
   const el = $('#statBudget');
-  if (m.statKind === 'score') {
+  if (m.statKind === 'percent') {
+    el.textContent = `(${m.statMin}~${m.statMax}, 비우면 서버가 굴려요)`;
+    el.classList.remove('over');
+  } else if (m.statKind === 'score') {
     const ok = [...vals].sort((a, b) => b - a).join() === m.scores.join();
     el.textContent = `(점수 ${m.scores.join('·')}을 하나씩${ok ? '' : ' — 겹치면 서버가 순서대로 다시 나눠요'})`;
     el.classList.toggle('over', !ok);
@@ -419,7 +433,8 @@ function submitSetup(e) {
         concept: f.get('charConcept'),
         background: f.get('charBackground'),
         items: String(f.get('charItems') || '').split(',').map((x) => x.trim()).filter(Boolean),
-        ...(ruleMeta()?.statKind === 'score' ? { scores: stats, class: f.get('charClass'), alignment: f.get('charAlign') } : { stats }),
+        ...(ruleMeta()?.statKind === 'score' ? { scores: stats } : { stats }),
+        ...Object.fromEntries([...document.querySelectorAll('[data-field]')].map((i) => [i.dataset.field, i.value])),
       };
     }
   }
@@ -470,13 +485,15 @@ $('#turnbar').addEventListener('click', (e) => {
     // Picking past the limit drops the earliest pick.
     if (on.length > count) on.find((x) => x !== opt).classList.remove('on');
     box.querySelector('[data-confirm]').disabled = box.querySelectorAll('.opt.on').length !== count;
+    const t = box.querySelector('.choiceText');
+    if (t) t.hidden = !box.querySelector(`.opt.on[data-i="${t.dataset.for}"]`);
     return;
   }
   const ok = e.target.closest('[data-confirm]');
   if (ok) {
     const box = ok.closest('[data-choice]');
     ok.disabled = true;
-    api('/api/choose', { id: ok.dataset.confirm, picks: [...box.querySelectorAll('.opt.on')].map((x) => Number(x.dataset.i)) });
+    api('/api/choose', { id: ok.dataset.confirm, picks: [...box.querySelectorAll('.opt.on')].map((x) => Number(x.dataset.i)), text: box.querySelector('.choiceText input')?.value || '' });
   }
 });
 $('#moveChips').addEventListener('click', (e) => {

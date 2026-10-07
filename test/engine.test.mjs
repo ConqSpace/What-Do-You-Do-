@@ -154,3 +154,48 @@ test('dungeon world: the human picks 7-9 options, damage moves hit foes, 0 HP ro
   assert.ok(c.characters.user.conditions.includes('사망'));
   engine.setPaused(true);
 });
+
+test('call of cthulhu: spectator campaign with combat, sanity and clues runs to the end', async () => {
+  const { engine } = table();
+  engine.newCampaign({ rules: 'coc7', premise: '항구 도시 실종 사건', userRole: 'spectator', players: ['mock', 'mock'], targetRounds: 6 });
+  await until(() => engine.c.phase === 'ended', 10000);
+  const c = engine.c;
+  for (const ch of Object.values(c.characters)) {
+    assert.ok(ch.chars && ch.skills && ch.san > 0 || ch.conditions.includes('영구 광기'));
+    assert.ok(ch.occupation);
+  }
+  assert.ok(c.log.some((m) => m.type === 'roll' && m.roll.total >= 1 && m.roll.total <= 100));
+  assert.equal(c.pendingChoices.length, 0);
+});
+
+test('call of cthulhu: the human pushes a failed roll with a reason', async () => {
+  const { engine } = table();
+  engine.newCampaign({
+    rules: 'coc7', premise: 'x', userRole: 'player', players: ['mock'], targetRounds: 30,
+    userChar: { name: '오필리아', occupation: '간호사', stats: { 근력: 45, 건강: 60, 크기: 50, 민첩: 70, 외모: 60, 지능: 75, 정신: 65, 교육: 70 }, skills: '응급처치 60' },
+  });
+  await until(() => engine.c.phase === 'declare' && engine.c.declared.p1);
+  const c = engine.c;
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, ...rest) => (kind === 'adjudicate'
+    ? { ok: true, text: JSON.stringify({ checks: [{ who: 'user', type: 'skill', skill: '응급처치', push_risk: '경비가 깨어난다' }] }) }
+    : orig(seat, kind, ...rest));
+  engine.userPost('declare', '오필리아는 경비의 상처를 지혈한다');
+  await until(() => c.phase === 'roll');
+  engine.backends.chat = orig;
+  const d = (n) => (n % 10) + 1;
+  setRng(scripted([d(5), d(9), /* 95: fail */ d(2), d(1) /* push → 12: success */]));
+  engine.userRollCheck(c.pendingChecks[0].id);
+  const choice = c.pendingChoices.find((p) => p.who === 'user');
+  assert.ok(choice, 'a failed skill roll offers luck / push / accept');
+  const push = choice.options.findIndex((o) => o.startsWith('밀어붙'));
+  assert.equal(engine.userChoose(choice.id, [push], '코트를 찢어 상처를 꽉 묶는다'), null);
+  setRng(null);
+  const pushed = c.log.filter((m) => m.type === 'roll').at(-1).roll;
+  assert.equal(pushed.pushed, true);
+  assert.equal(pushed.total, 12);
+  assert.equal(pushed.why, '코트를 찢어 상처를 꽉 묶는다');
+  await until(() => c.round === 2);
+  assert.ok(c.characters.user.ticks.includes('응급처치'));
+  engine.setPaused(true);
+});

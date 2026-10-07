@@ -111,7 +111,7 @@ async function handleApi(req, res, url) {
     case '/api/post': err = engine.userPost(body.mode, body.text); break;
     case '/api/pass': err = engine.userPass(); break;
     case '/api/roll': err = engine.userRollCheck(body.id); break;
-    case '/api/choose': err = engine.userChoose(body.id, body.picks); break;
+    case '/api/choose': err = engine.userChoose(body.id, body.picks, body.text); break;
     case '/api/pause': engine.setPaused(!!body.paused); break;
     default: return sendJson(res, 404, { error: 'not found' });
   }

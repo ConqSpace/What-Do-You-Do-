@@ -16,6 +16,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0;
@@ -257,6 +258,22 @@ legend { color: var(--accent); font-size: .9em; padding: 0 6px; }
   .row > .narrow { flex: 1; }
 }
 .top button { white-space: nowrap; }
+
+/* Call of Cthulhu: deep teal and bone instead of brass on ink */
+body[data-rules="coc7"] {
+  --bg: #0e1514; --panel: #121c1a; --panel2: #172422; --line: #263633;
+  --text: #e4e8df; --muted: #93a39b; --accent: #9ed3a9; --accent2: #6fa884;
+  --parch: #dfe8dc; --parch-text: #13211d;
+}
+body[data-rules="coc7"] .narration { box-shadow: 0 2px 0 #a9bfae inset, 0 4px 14px rgba(0,0,0,.3); }
+body[data-rules="coc7"] .narration .tag { color: #4c6b5c; }
+body[data-rules="coc7"] .declare.me .bubble, body[data-rules="coc7"] .modes button.on { background: #16241f; }
+.hp.san > i { background: #8fb8f0; }
+.rollbody .die { min-width: 28px; width: auto; padding: 0 5px; }
+.choiceText { display: flex; flex-direction: column; gap: 4px; font-size: .9em; }
+.choiceText input { max-width: 520px; }
+.clues { margin: 0; padding-left: 18px; font-size: .9em; }
+.clues li { margin-bottom: 4px; }
 @media (max-width: 720px) {
   .top { gap: 8px; padding: 8px 10px; }
   .top button { padding: 5px 9px; font-size: .85em; }
