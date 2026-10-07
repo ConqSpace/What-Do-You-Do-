@@ -148,7 +148,7 @@ GM이 즉흥으로 만든 세계를 서버가 붙잡아 두는 장치다.
 |---|---|---|
 | `port` | 8420 | |
 | `userName` | 방장 | AI들이 부르는 내 이름 (캠페인마다 바꿀 수 있다) |
-| `demo` | false | true면 모든 자리를 데모봇이 맡는다 (`WDYD_DEMO=1`도 같음) |
+| `demo` | false | true면 모든 자리를 데모봇이 맡는다 (`--demo` 인자나 `WDYD_DEMO=1`도 같음) |
 | `declareMode` | sequential | `sequential`: AI 플레이어가 한 명씩 선언(서로 반응) / `parallel`: 동시에(빠름) |
 | `waitForUser` | true | 플레이어로 참가했을 때 GM이 내 선언을 기다릴지 |
 | `targetRounds` | 12 | GM이 결말을 향해 페이스를 맞추는 기준 |

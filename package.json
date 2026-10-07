@@ -7,7 +7,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "start": "node server.mjs",
-    "demo": "WDYD_DEMO=1 node server.mjs",
+    "demo": "node server.mjs --demo",
     "test": "node --test test/*.test.mjs"
   },
   "license": "MIT"

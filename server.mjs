@@ -46,7 +46,7 @@ function loadConfig() {
   cfg.backends = { ...DEFAULT_CFG.backends };
   for (const [k, v] of Object.entries(user.backends || {})) cfg.backends[k] = { ...cfg.backends[k], ...v };
   if (process.env.PORT) cfg.port = Number(process.env.PORT);
-  if (process.env.WDYD_DEMO === '1') cfg.demo = true;
+  if (process.env.WDYD_DEMO === '1' || process.argv.includes('--demo')) cfg.demo = true;
   return cfg;
 }
 
