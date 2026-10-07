@@ -10,9 +10,8 @@ const OLD_TIER = { critical: 'crit', success: 'good', failure: 'bad', fumble: 'f
 const PHASE = { setup: '준비 전', prep: '캠페인 준비 중', declare: '선언', resolve: '판정 중', roll: '주사위 · 선택', 'gm-wait': 'GM 서술 대기', ended: '종료' };
 const STATUS = { thinking: '생각 중', done: '✓ 선언', waiting: '차례 대기', rolling: '굴릴 차례', choosing: '고르는 중', idle: '' };
 const DICE = { d20: 'd20', dw: '2d6', coc7: 'd100' };
-// [label, premise, tone]. The first one leaves both blank so the GM decides.
+// [label, premise, tone]
 const PRESETS = [
-  ['🎲 GM에게 맡기기', '', ''],
   ['판타지', '국경 마을에서 사람들이 하나둘 사라지는 정통 판타지 모험', '어둡지만 희망이 남아 있게'],
   ['코즈믹 호러', '1920년대 안개 낀 항구 도시, 바다에서 건져 올린 이상한 조각상과 연쇄 실종 사건', '진지하고 음산하게'],
   ['던전 크롤', '고블린 떼가 점령한 드워프 폐광에서 사라진 대장장이를 구출하라', '거칠고 박진감 있게'],
@@ -20,6 +19,54 @@ const PRESETS = [
   ['무협', '강호를 뒤흔든 비급이 사라졌다. 정파와 사파가 모두 노리는 객잔에서 벌어지는 이야기', '호쾌하고 비장하게'],
   ['학원 미스터리', '폐교 직전의 고등학교, 밤마다 불이 켜지는 옛 음악실의 비밀을 파헤치는 학생들', '아련하고 오싹하게'],
 ];
+// The 🎲 button: premise = "<setting>에서 <incident>", plus a tone, from genres that suit the rules.
+const RANDOM = {
+  fantasy: {
+    rules: ['d20', 'dw'],
+    settings: ['국경 마을', '몰락한 왕도의 뒷골목', '거대한 고목 위의 엘프 도시', '얼어붙은 북방 요새', '순례자들이 모이는 사막 수도원', '강을 따라 떠도는 상단 행렬'],
+    incidents: ['사람들이 하나둘 사라진다', '죽은 왕의 인장이 다시 쓰이기 시작했다', '밤마다 봉인된 탑의 종이 저절로 울린다', '용을 잡았다는 영웅이 거짓말쟁이라는 소문이 돈다', '어느 날부터 마법이 듣지 않는다', '성물을 옮기던 호위대가 흔적도 없이 사라졌다'],
+    tones: ['어둡지만 희망이 남아 있게', '웅장하고 서사적으로', '가볍고 유쾌하게', '쓸쓸하고 서정적으로'],
+  },
+  dungeon: {
+    rules: ['d20', 'dw'],
+    settings: ['고블린이 점령한 드워프 폐광', '물에 잠긴 고대 신전', '살아 움직이는 미궁', '무너진 마법사의 탑 지하', '거대 벌레가 판 땅굴'],
+    incidents: ['사라진 대장장이를 구해 와야 한다', '보물을 노린 다른 모험가 일행이 한발 먼저 들어갔다', '가장 깊은 곳의 무언가가 깨어나고 있다', '입구가 무너져 다른 출구를 찾아야 한다', '마을을 덮친 저주의 근원이 잠들어 있다'],
+    tones: ['거칠고 박진감 있게', '긴장감 넘치고 위태롭게', '유쾌한 보물 사냥처럼'],
+  },
+  horror: {
+    rules: ['d20', 'coc7'],
+    settings: ['1920년대 안개 낀 항구 도시', '뉴잉글랜드의 외딴 어촌', '폐쇄를 앞둔 정신병원', '사막 한가운데의 발굴 현장', '대학 도서관의 금서 서고', '눈에 갇힌 산장'],
+    incidents: ['어부의 그물에 걸려 올라온 조각상 이후로 실종이 이어진다', '죽은 줄 알았던 교수에게서 편지가 왔다', '사람들이 모두 같은 꿈을 꾸기 시작했다', '아무도 읽을 수 없는 문자가 벽에 떠오른다', '조사단 전원과 같은 날 연락이 끊겼다', '해마다 같은 날 한 명씩 사라진다'],
+    tones: ['진지하고 음산하게', '서서히 조여 오는 공포로', '건조한 탐정물처럼', '광기가 스며들게'],
+  },
+  cyberpunk: {
+    rules: ['d20'],
+    settings: ['2089년 네오서울', '해수면이 차오른 수상 도시', '기업이 통치하는 궤도 정거장', '불법 의체 시장이 열리는 지하 상가'],
+    incidents: ['거대 기업의 데이터를 훔치는 의뢰가 들어왔다', '기억을 사고파는 브로커가 살해당했다', '도시 관리 AI가 시민 기록을 조금씩 지우고 있다', '의뢰인이 이미 죽은 사람이라는 사실이 드러났다'],
+    tones: ['네온 아래 냉소적이고 건조하게', '빠르고 스타일리시하게', '우울한 누아르처럼'],
+  },
+  wuxia: {
+    rules: ['d20'],
+    settings: ['정파와 사파가 모두 드나드는 객잔', '안개에 싸인 무림 명문의 산문', '황궁과 강호 사이의 국경 관문', '대운하를 오가는 상선'],
+    incidents: ['강호를 뒤흔든 비급이 사라졌다', '무림맹주가 독살당했다', '은거 고수의 제자를 자처하는 자들이 나타났다', '십 년 전 멸문당한 가문의 생존자가 돌아왔다'],
+    tones: ['호쾌하고 비장하게', '의리와 배신이 얽히게', '유쾌한 협객극처럼'],
+  },
+  school: {
+    rules: ['d20', 'coc7'],
+    settings: ['폐교 직전의 고등학교', '산골의 기숙학교', '축제를 앞둔 대학 캠퍼스'],
+    incidents: ['밤마다 옛 음악실에 불이 켜진다', '졸업 앨범에 없는 학생이 교실에 앉아 있다', '학교 괴담이 하나씩 실제로 일어난다', '사라진 선배의 일기장이 발견됐다'],
+    tones: ['아련하고 오싹하게', '풋풋하지만 서늘하게', '긴장감 있는 추리물처럼'],
+  },
+};
+const any = (a) => a[Math.floor(Math.random() * a.length)];
+function randomStory(rules, current) {
+  const genres = Object.values(RANDOM).filter((g) => g.rules.includes(rules));
+  for (let i = 0; i < 10; i++) {
+    const g = any(genres.length ? genres : Object.values(RANDOM));
+    const premise = `${any(g.settings)}에서 ${any(g.incidents)}`;
+    if (premise !== current) return { premise, tone: any(g.tones) };
+  }
+}
 const NAME_KEY = 'wdyd.userName';
 const loadName = () => { try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; } };
 const saveName = (v) => { try { localStorage.setItem(NAME_KEY, v); } catch {} };
@@ -513,7 +560,8 @@ function openSetup() {
   $('#availNote').textContent = real.length
     ? `찾은 CLI: ${real.map((k) => names[k]).join(', ')}. 한 AI가 GM과 플레이어를 같이 맡아도 돼요(매번 따로 불려요).`
     : 'AI CLI를 찾지 못해서 데모봇만 쓸 수 있어요.';
-  $('#presets').innerHTML = PRESETS.map(([l, p], i) => `<button type="button" data-preset="${i}"${p ? '' : ' class="auto"'}>${l}</button>`).join('');
+  $('#presets').innerHTML = '<button type="button" class="dice" data-random>🎲 무작위</button>'
+    + PRESETS.map(([l], i) => `<button type="button" data-preset="${i}">${l}</button>`).join('');
   form().userName.value = loadName() || form().userName.value;
   const rs = Object.values(state?.rulesets || {});
   if (camp()?.rules) setupRules = camp().rules;
@@ -595,7 +643,6 @@ function updateBudget() {
 function updateRole() {
   $('#gmBox').hidden = role() === 'gm';
   $('#storyNote').hidden = role() === 'gm';
-  $$('#presets .auto').forEach((b) => { b.hidden = role() === 'gm'; });
   const ai = form().aiChar.checked;
   $('#charManual').hidden = ai;
   $('#charHintBox').hidden = !ai;
@@ -659,9 +706,11 @@ form().addEventListener('change', (e) => {
 });
 form().addEventListener('input', (e) => { if (e.target.dataset.stat) updateBudget(); });
 $('#presets').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-preset]');
+  const b = e.target.closest('[data-preset], [data-random]');
   if (!b) return;
-  const [, premise, tone] = PRESETS[b.dataset.preset];
+  const { premise, tone } = b.dataset.preset
+    ? { premise: PRESETS[b.dataset.preset][1], tone: PRESETS[b.dataset.preset][2] }
+    : randomStory(setupRules, form().premise.value);
   form().premise.value = premise;
   form().tone.value = tone;
 });

@@ -458,7 +458,7 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
 .check input { width: 20px; height: 20px; min-height: 0; accent-color: var(--accent); }
 .presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .presets button { background: var(--surface2); color: var(--text); border-color: var(--line); font-size: 13px; font-weight: 500; min-height: 40px; border-radius: 20px; padding: 0 12px; }
-.presets button.auto { background: var(--me-bg); color: var(--accent); border-color: var(--me-line); }
+.presets button.dice { background: var(--me-bg); color: var(--accent); border-color: var(--me-line); }
 .row { display: flex; gap: 10px; flex-wrap: wrap; }
 .row > div { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; }
 .row > .narrow { flex: 0 1 140px; }
