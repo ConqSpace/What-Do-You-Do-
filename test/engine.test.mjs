@@ -53,7 +53,7 @@ test('blank premise and tone: the GM makes them up while designing the world', a
   };
   engine.newCampaign({ premise: '  ', userRole: 'spectator', players: ['mock'] });
   assert.equal(engine.c.premise, '');
-  await until(() => engine.c.prep.step !== 'world');
+  await until(() => engine.c.prep?.step !== 'world');
   assert.match(turn, /"premise":/);
   assert.match(turn, /"tone":/);
   assert.ok(engine.c.premise.length > 0);
@@ -142,7 +142,7 @@ test('dungeon world: the human picks 7-9 options, damage moves hit foes, 0 HP ro
   const { engine } = table();
   engine.newCampaign({
     rules: 'dw', premise: '던전', userRole: 'player', players: ['mock'],
-    userChar: { name: '아린', class: '성기사', scores: { 근력: 15, 민첩: 8, 체력: 16, 지능: 9, 지혜: 13, 매력: 12 } },
+    userChar: { name: '아린', class: '성기사', scores: { 근력: 15, 민첩성: 8, 체력: 16, 지능: 9, 지혜: 13, 매력: 12 } },
   });
   await until(() => engine.c.phase === 'declare' && engine.c.declared.p1);
   const c = engine.c;
@@ -151,7 +151,7 @@ test('dungeon world: the human picks 7-9 options, damage moves hit foes, 0 HP ro
 
   const orig = engine.backends.chat.bind(engine.backends);
   engine.backends.chat = async (seat, kind, ...rest) => (kind === 'adjudicate'
-    ? { ok: true, text: JSON.stringify({ checks: [{ who: 'user', move: '상황 파악' }, { who: 'p1', move: '난타전', target: '종탑의 그림자' }] }) }
+    ? { ok: true, text: JSON.stringify({ checks: [{ who: 'user', move: '상황 파악' }, { who: 'p1', move: '접근전', target: '종탑의 그림자' }] }) }
     : orig(seat, kind, ...rest));
   setRng(scripted([/* p1 hack&slash: 12+ */ 6, 6, /* damage */ 4, /* user discern: 7 + 지혜+1 = 8 */ 3, 4]));
   engine.userPost('declare', '[상황 파악] 아린은 녀석의 약점을 찾는다');
@@ -167,14 +167,14 @@ test('dungeon world: the human picks 7-9 options, damage moves hit foes, 0 HP ro
   assert.equal(engine.userChoose(choice.id, [2]), null);
   setRng(null);
   await until(() => c.round === 2 && c.phase === 'declare');
-  assert.ok(c.log.some((m) => m.choice && m.text.includes('무엇을 조심해야 하나?')));
+  assert.ok(c.log.some((m) => m.choice && m.text.includes('무엇을 주의해야 하나?')));
 
   setRng(scripted([1, 1]));
   engine.applyEffects([{ who: 'user', hp: -99 }]);
   setRng(null);
   assert.equal(c.characters.user.hp, 0);
   const lb = c.log.filter((m) => m.type === 'roll').at(-1);
-  assert.equal(lb.roll.move, '마지막 숨');
+  assert.equal(lb.roll.move, '황천길');
   assert.ok(c.characters.user.conditions.includes('사망'));
   engine.setPaused(true);
 });
@@ -327,16 +327,16 @@ test('character builder: the AI players make theirs, then the table waits for th
   await new Promise((r) => setTimeout(r, 30));
   assert.equal(engine.c.prep.step, 'chars', 'waits for the human');
 
-  assert.equal(engine.builderSave({ page: 3, class: '도둑' }), null);
-  assert.deepEqual(engine.view().campaign.builder.draft, { page: 3, class: '도둑' });
+  assert.equal(engine.builderSave({ page: 3, class: '도적' }), null);
+  assert.deepEqual(engine.view().campaign.builder.draft, { page: 3, class: '도적' });
   assert.equal(engine.builderRoll('근력'), '이 룰은 특성치를 굴리지 않아요');
-  assert.equal(engine.builderFinish({ char: { class: '도둑' } }), '이름을 정해 주세요');
-  const scores = { 근력: 8, 민첩: 16, 체력: 12, 지능: 13, 지혜: 9, 매력: 15 };
-  assert.equal(engine.builderFinish({ char: { name: '미로', class: '도둑', scores, bonds: [{ with: 'p1', text: '루나를 믿을 수 없다' }] } }), null);
+  assert.equal(engine.builderFinish({ char: { class: '도적' } }), '이름을 정해 주세요');
+  const scores = { 근력: 8, 민첩성: 16, 체력: 12, 지능: 13, 지혜: 9, 매력: 15 };
+  assert.equal(engine.builderFinish({ char: { name: '스패로', class: '도적', scores, bonds: [{ with: 'p1', text: '루나가 나를 도와줄 것이다.' }] } }), null);
   const ch = engine.c.characters.user;
-  assert.equal(ch.class, '도둑');
+  assert.equal(ch.class, '도적');
   assert.deepEqual(ch.scores, scores);
-  assert.equal(ch.bonds[0].text, '루나를 믿을 수 없다');
+  assert.equal(ch.bonds[0].text, '루나가 나를 도와줄 것이다.');
   assert.equal(engine.view().campaign.builder, null);
   assert.match(engine.builderSave({}), /만들 수 없어요/);
   await until(() => engine.c.phase === 'declare');

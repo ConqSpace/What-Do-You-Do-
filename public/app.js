@@ -515,7 +515,7 @@ function renderComposer() {
   if (!modes.some(([m]) => m === mode)) mode = modes[0][0];
   $('#modes').innerHTML = modes.map(([m, l]) => `<button type="button" data-mode="${m}" class="${m === mode ? 'on' : ''}" aria-pressed="${m === mode}" title="${modes.length > 1 ? '눌러서 선언/잡담 바꾸기' : ''}">${l}</button>`).join('');
   const dw = c.rules === 'dw';
-  const gmPh = c.rules === 'dw' ? '장면 서술 · /check 카엘 위험에 맞서기 민첩' : c.rules === 'coc7' ? '장면 서술 · /check 오필리아 관찰력 어려움' : '장면 서술 · /check 카엘 민첩 15';
+  const gmPh = c.rules === 'dw' ? '장면 서술 · /check 아본 위험 돌파 민첩성' : c.rules === 'coc7' ? '장면 서술 · /check 오필리아 관찰력 어려움' : '장면 서술 · /check 카엘 민첩 15';
   $('#input').placeholder = mode === 'ooc' ? '테이블 잡담 (플레이어로서)' : role === 'gm' ? gmPh : '“대사” 행동은 그냥 쓰기';
   const moves = dw && role === 'player' && mode === 'declare' ? state.rulesets?.dw?.moves || [] : [];
   $('#moveChips').innerHTML = moves.map((m) => `<button type="button" data-move="${esc(m.name)}">${esc(m.name)}</button>`).join('');

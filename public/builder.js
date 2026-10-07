@@ -16,13 +16,13 @@ const PAGES = {
   d20: ['start', 'concept', 'name', 'stats', 'look', 'items', 'backstory', 'party', 'review'],
 };
 const TITLE = {
-  start: '시작', class: '클래스', stats: '능력치', moves: '무브', gear: '장비', look: '외모 · 성격', alignment: '성향 · 동기',
-  name: '이름', intro: '소개', bonds: '유대', party: '동료', review: '확인', chars: '특성치', occupation: '직업', occSkills: '직업 기능',
+  start: '시작', class: '직업', stats: '능력치', moves: '핵심 액션', gear: '장비', look: '외모 · 성격', alignment: '가치관',
+  name: '이름', intro: '소개', bonds: '인연', party: '동료', review: '확인', chars: '특성치', occupation: '직업', occSkills: '직업 기능',
   personal: '관심 기능', backstory: '배경', concept: '콘셉트', items: '소지품',
 };
 // Which character fields each page decides (what "나머지는 GM에게" keeps).
 const FIELDS = {
-  class: ['class'], stats: ['scores', 'stats'], gear: ['items', 'weapons'], look: ['appearance', 'personality'],
+  class: ['class'], stats: ['scores', 'stats'], gear: ['items', 'weapons', 'armor'], look: ['appearance', 'personality'],
   alignment: ['alignment', 'background'], name: ['name'], intro: ['concept'], bonds: ['bonds'], chars: ['method', 'card', 'stats'],
   occupation: ['occupation'], occSkills: ['skills'], personal: ['skills'], backstory: ['background', 'personality'],
   concept: ['concept'], items: ['items'], party: ['background'],
@@ -142,6 +142,8 @@ const spent = (pool) => Object.values(d[pool] || {}).reduce((a, v) => a + (Numbe
 const skillValue = (name) => skillBase(name) + (Number(d.occ?.[name]) || 0) + (Number(d.personal?.[name]) || 0);
 
 function names() {
+  // Dungeon World: the class's own name list from the Korean edition.
+  if (rules() === 'dw') return classOf()?.names || info?.classes?.flatMap((c) => c.names) || cards().flatMap((a) => a.names);
   if (rules() !== 'd20') return cards().flatMap((a) => a.names);
   const g = ctx.genre();
   const same = cards().filter((a) => a.genre === g);
@@ -160,8 +162,7 @@ function init(page) {
   if (page === 'look' && r === 'dw' && classOf()) d.look ??= Object.fromEntries(Object.entries(classOf().looks).map(([g, l]) => [g, l[0]]));
   if (page === 'alignment' && r === 'dw' && classOf()) d.alignment ??= classOf().alignments[0].name;
   if (page === 'gear' && r === 'dw' && classOf()) {
-    d.weapon ??= classOf().gear.weapons[0];
-    d.extras ??= classOf().gear.extras.slice(0, classOf().gear.pick);
+    d.gearPick ??= defaultGear(classOf());
   }
   if (page === 'gear' && r === 'coc7') d.items ??= ['손전등', '수첩과 연필'];
   if (page === 'chars') d.method ??= 'roll';
@@ -173,6 +174,18 @@ function init(page) {
   if (page === 'bonds' && !d.bonds) d.bonds = others().length ? [{ with: others()[0].key, tpl: 0 }] : [];
 }
 
+const defaultGear = (c) => c.gear.groups.map((g) => [...Array(g.pick).keys()]);
+
+// A Dungeon World class's chosen gear: what it carries and the armor it gives.
+function dwGear() {
+  const c = classOf();
+  if (!c) return { items: [], armor: 0 };
+  const picks = d.gearPick || defaultGear(c);
+  const chosen = c.gear.groups.flatMap((g, gi) => (picks[gi] || []).map((oi) => g.options[oi]).filter(Boolean));
+  const armor = Math.max(c.gear.armor || 0, ...chosen.map((o) => o.armor || 0)) + chosen.filter((o) => o.shield).length;
+  return { items: [...c.gear.always, ...chosen.flatMap((o) => o.items || [o.name])], armor };
+}
+
 function setClass(name) {
   const c = info?.classes?.find((x) => x.name === name);
   if (!c) return;
@@ -181,7 +194,7 @@ function setClass(name) {
   if (!changed) return;
   // A new class brings its own recommendations unless the player already chose those.
   if (!d.touched.stats) d.scores = { ...c.scores };
-  if (!d.touched.gear) { d.weapon = c.gear.weapons[0]; d.extras = c.gear.extras.slice(0, c.gear.pick); }
+  if (!d.touched.gear) d.gearPick = defaultGear(c);
   if (!d.touched.look) d.look = Object.fromEntries(Object.entries(c.looks).map(([g, l]) => [g, l[0]]));
   if (!d.touched.alignment || !c.alignments.some((a) => a.name === d.alignment)) d.alignment = c.alignments[0].name;
 }
@@ -232,7 +245,7 @@ function applyCard(a) {
   d.touched = { stats: true, gear: true, occSkills: true };
   if (r === 'dw') {
     d.class = a.class; d.alignment = a.alignment; d.scores = { ...a.scores };
-    d.weapon = a.items[0]; d.extras = a.items.slice(1);
+    d.gearPick = a.gear.map((x) => [...x]);
     d.look = null;
   } else if (r === 'coc7') {
     d.occupation = a.occupation; d.method = 'card'; d.stats = { ...a.stats };
@@ -263,10 +276,10 @@ function character(only) {
     const look = Object.values(d.look || {});
     Object.assign(out, {
       class: d.class, alignment: d.alignment, scores: d.scores,
-      items: [d.weapon, ...(d.extras || []), ...custom].filter(Boolean),
+      items: [...dwGear().items, ...custom], armor: dwGear().armor,
       appearance: [...look, d.lookText].filter(Boolean).join(', '),
       personality: [...(d.personality || []), d.personalityText].filter(Boolean).join(', '),
-      background: [d.answers.동기 ? `모험에 나선 이유: ${d.answers.동기}` : '', d.background].filter(Boolean).join(' '),
+      background: d.background || '',
       bonds: (d.bonds || []).map((b) => ({ with: b.with, text: bondText(b) })).filter((b) => b.text),
     });
     out.concept ||= d.class;
@@ -297,10 +310,13 @@ function character(only) {
 }
 
 function bondText(b) {
-  const tpl = info?.bonds?.[b.tpl];
+  const tpl = classOf()?.bonds?.[b.tpl];
   if (b.text) return b.text;
   const who = others().find((o) => o.key === b.with);
-  return tpl && who ? tpl.replace('___', who.name) : '';
+  if (!tpl || !who) return '';
+  // The blank's particle follows the name: 카엘은 / 티나는, 카엘을 / 티나를 …
+  const pair = { 는: '은', 를: '을', 가: '이', 와: '과' };
+  return tpl.replace(/_{3,}(는|를|가|와)?/, (_, p) => `${who.name}${p ? (eul(who.name) === '을' ? pair[p] : p) : ''}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -398,6 +414,18 @@ function onClick(e) {
     case 'go': return show(t.dataset.page);
     case 'name': rollName(); d.namePool = null; return redraw();
     case 'intro': d.concept = d.introAuto = introDraft(); return redraw();
+    case 'gear': {
+      const g = classOf().gear.groups[Number(t.dataset.g)];
+      const oi = Number(t.dataset.o);
+      d.gearPick ??= defaultGear(classOf());
+      const cur = d.gearPick[t.dataset.g] ||= [];
+      if (cur.includes(oi)) { if (g.pick > 1) cur.splice(cur.indexOf(oi), 1); }
+      else if (g.pick === 1) cur.splice(0, cur.length, oi);
+      else if (cur.length < g.pick) cur.push(oi);
+      else return ctx.toast(`${g.pick}개까지 고를 수 있어요`);
+      d.touched.gear = true;
+      return redraw();
+    }
     case 'roll': return ctx.api('/api/builder/roll', { name: t.dataset.name });
     case 'rollAll': return rollMissing();
     case 'recommend':
@@ -416,7 +444,7 @@ function onClick(e) {
     }
     case 'bondAdd':
       d.bonds ??= [];
-      if (d.bonds.length < 3 && others().length) d.bonds.push({ with: others()[0].key, tpl: d.bonds.length % (info.bonds.length) });
+      if (d.bonds.length < 3 && others().length) d.bonds.push({ with: others()[Math.min(d.bonds.length, others().length - 1)].key, tpl: d.bonds.length % classOf().bonds.length });
       return redraw();
     case 'bondDel': d.bonds.splice(Number(t.dataset.i), 1); return redraw();
     default:
@@ -531,15 +559,15 @@ const PAGE = {
   },
 
   class() {
-    return head('어떤 클래스로 할까요?', '클래스는 캐릭터가 잘하는 일과 쓸 수 있는 특별한 기술(무브)을 정해요.')
+    return head('어떤 직업으로 할까요?', '직업은 캐릭터가 잘하는 일과, 처음부터 쓸 수 있는 특별한 액션을 정해요. 일행끼리는 서로 다른 직업을 골라요.')
       + `<div class="bcards">${info.classes.map((c) => card(`data-pick="class" data-val="${esc(c.name)}"`, esc(c.name), c.play,
-        [`HP ${c.hp}+체력`, `피해 ${c.damage}`, `갑옷 ${c.armor}`], d.class === c.name)).join('')}</div>`;
+        [`HP ${c.hp}+체력`, `기본 피해 ${c.damage}`], d.class === c.name)).join('')}</div>`;
   },
 
   stats() {
     if (rules() === 'dw') {
       const c = classOf();
-      return head('능력치를 나눠 볼까요?', `16·15·13·12·9·8을 하나씩 나눠 가져요. 이미 쓴 값을 고르면 서로 바뀌어요. 높을수록 그 능력치로 하는 판정(2d6+보정치)에 유리해요.`)
+      return head('능력치를 나눠 볼까요?', `16·15·13·12·9·8을 하나씩 나눠 가져요. 이미 쓴 값을 고르면 서로 바뀌어요. 가장 재미있어 보이는 액션에 쓰는 능력치에 16을 주세요. 판정은 2d6 + 능력수정치예요.`)
         + `<div class="brows">${info.stats.map((s) => {
           const v = d.scores[s.name];
           return `<div class="brow"><div class="bl"><b>${s.name}</b> <span class="mod">${sg(modOf(v))}</span><small>${esc(s.help)}</small></div>
@@ -557,22 +585,23 @@ const PAGE = {
 
   moves() {
     const c = classOf();
-    return head(`${c.name}의 무브`, '무브는 특별한 행동이에요. 이름을 외칠 필요는 없고, 이야기 속에서 그 행동을 하면 GM이 판정을 불러요. 여기서는 읽어만 보세요.')
-      + `<div class="bmoves">${c.moves.map((m) => `<div class="bmove"><b>${esc(m.name)}</b>${m.stat ? ` <span class="muted">· ${esc(m.stat)}</span>` : ''}
-        <div>${esc(m.when)}</div><div class="muted">10+ ${esc(m.strong)}${m.weak ? ` · 7–9 ${esc(m.weak)}` : ''}</div></div>`).join('')}</div>`
-      + `<h3 class="sub">타고난 능력</h3><ul class="blist">${c.passives.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>`
-      + `<h3 class="sub">누구나 쓰는 기본 무브</h3><p class="muted">${info.basicMoves.map(esc).join(' · ')}</p>`;
+    const abbr = { 근력: '+근', 민첩성: '+민', 체력: '+체', 지능: '+지', 지혜: '+혜', 매력: '+매' };
+    return head(`${c.name}의 핵심 액션`, '액션은 특별한 행동이에요. 이름을 외칠 필요는 없고, 이야기 속에서 그 행동을 하면 마스터가 판정을 불러요. 여기서는 읽어만 보세요.')
+      + `<div class="bmoves">${c.moves.map((m) => `<div class="bmove"><b>${esc(m.name)}</b>${m.stat ? ` <span class="muted">· ${esc(abbr[m.stat] || m.stat)} 판정</span>` : ''}
+        <div>${esc(m.when)}</div><div class="muted">10+ ${esc(m.strong)}${m.weak ? ` · 7~9 ${esc(m.weak)}` : ''}</div></div>`).join('')}</div>`
+      + `<h3 class="sub">판정 없이 갖는 것</h3><ul class="blist">${c.passives.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>`
+      + `<h3 class="sub">누구나 쓰는 기본 액션</h3><p class="muted">${info.basicMoves.map(esc).join(' · ')}</p>`;
   },
 
   gear() {
     const custom = field('직접 추가 (쉼표로)', 'customItems', d.customItems, '예: 낡은 지도, 은화 주머니');
     if (rules() === 'dw') {
       const c = classOf();
-      const weapons = [...new Set([...c.gear.weapons, d.weapon].filter(Boolean))];
-      const extras = [...new Set([...c.gear.extras, ...(d.extras || [])])];
-      return head('무엇을 챙길까요?', '장비는 이야기 속에서 할 수 있는 일을 넓혀 줘요. 밧줄이 있으면 절벽을 내려갈 수 있죠.')
-        + `<h3 class="sub">무기 하나</h3>${chipsRow(weapons.map((w) => chip(`data-pick="weapon" data-val="${esc(w)}" data-touch="gear"`, w, d.weapon === w)).join(''))}`
-        + `<h3 class="sub">챙길 것 (${c.gear.pick}개)</h3>${chipsRow(extras.map((x) => chip(`data-toggle="extras" data-val="${esc(x)}" data-max="${Math.max(c.gear.pick, d.extras?.length || 0)}" data-touch="gear"`, x, d.extras?.includes(x))).join(''))}`
+      const picks = d.gearPick || defaultGear(c);
+      return head('무엇을 챙길까요?', `${esc(iga(c.name))} 처음 갖고 시작하는 장비예요. 묶음마다 정해진 개수만큼 골라요. 보호구가 장갑을 정해요 (지금 장갑 ${dwGear().armor}).`)
+        + (c.gear.always.length ? `<p class="muted">기본으로 가진 것: ${c.gear.always.map(esc).join(', ')}</p>` : '')
+        + c.gear.groups.map((g, gi) => `<h3 class="sub">${esc(g.label)}${g.pick > 1 ? ` (${g.pick}개)` : ''}</h3>`
+          + chipsRow(g.options.map((o, oi) => chip(`data-act="gear" data-g="${gi}" data-o="${oi}"`, `${o.name}${o.armor ? ` · 장갑 ${o.armor}` : o.shield ? ' · 장갑 +1' : ''}`, picks[gi]?.includes(oi))).join(''))).join('')
         + custom;
     }
     if (rules() === 'coc7') {
@@ -612,9 +641,8 @@ const PAGE = {
 
   alignment() {
     const c = classOf();
-    return head('무엇을 위해 움직이나요?', '성향은 캐릭터가 지키려는 가치예요. 그 가치대로 행동하면 세션이 끝날 때 경험치를 얻어요.')
+    return head('가치관을 골라 주세요', '가치관은 캐릭터의 도덕관과 인생관이에요. 고른 가치관대로 행동하면 세션이 끝날 때 경험치를 얻어요. 직업마다 고를 수 있는 가치관이 달라요.')
       + `<div class="bcards">${c.alignments.map((a) => card(`data-pick="alignment" data-val="${a.name}" data-touch="alignment"`, esc(a.name), a.motive, [], d.alignment === a.name)).join('')}</div>`
-      + question('동기', info.motives.q, info.motives.chips)
       + field('배경 (선택)', 'background', d.background, '어디서 왔고, 무엇을 겪었나요?', { area: true });
   },
 
@@ -706,14 +734,14 @@ const PAGE = {
 
   bonds() {
     const os = others();
-    if (!os.length) return head('동료와의 유대', '동료가 아직 만들어지는 중이에요. 건너뛰어도 되고, 잠시 뒤 돌아와도 돼요.');
-    return head('동료와의 유대', '유대는 동료에 대한 감정과 사연이에요. 동료를 도울 때 판정에 더해지고, 연기의 씨앗이 돼요. 3개까지.')
+    if (!os.length) return head('동료와의 인연', '동료가 아직 만들어지는 중이에요. 건너뛰어도 되고, 잠시 뒤 돌아와도 돼요.');
+    return head('동료와의 인연', `${esc(classOf().name)}의 인연 문장에 동료 이름을 넣어요. 하나만 정해도 되지만 많을수록 유리해요. 같은 동료가 여러 번 나와도 돼요. 인연 수만큼 그 동료를 협조 또는 방해할 때 더해져요.`)
       + (d.bonds || []).map((b, i) => `<div class="bbond">
         <select data-bond="${i}" data-part="with" aria-label="동료">${os.map((o) => `<option value="${o.key}"${o.key === b.with ? ' selected' : ''}>${esc(o.name)}</option>`).join('')}</select>
-        <select data-bond="${i}" data-part="tpl" aria-label="유대">${info.bonds.map((t, j) => `<option value="${j}"${j === b.tpl ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>
-        <input data-bind="bonds.${i}.text" value="${esc(bondText(b))}" aria-label="유대 문장">
-        <button type="button" class="ghost" data-act="bondDel" data-i="${i}" aria-label="유대 지우기">✕</button></div>`).join('')
-      + ((d.bonds || []).length < 3 ? '<div class="bchips"><button type="button" class="bchip" data-act="bondAdd">＋ 유대 더하기</button></div>' : '');
+        <select data-bond="${i}" data-part="tpl" aria-label="인연">${classOf().bonds.map((t, j) => `<option value="${j}"${j === b.tpl ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>
+        <input data-bind="bonds.${i}.text" value="${esc(bondText(b))}" aria-label="인연 문장">
+        <button type="button" class="ghost" data-act="bondDel" data-i="${i}" aria-label="인연 지우기">✕</button></div>`).join('')
+      + ((d.bonds || []).length < 3 ? '<div class="bchips"><button type="button" class="bchip" data-act="bondAdd">＋ 인연 더하기</button></div>' : '');
   },
 
   party() {
@@ -754,13 +782,11 @@ function eul(word) {
   return code >= 0 && code < 11172 && code % 28 ? '을' : '를';
 }
 
-// A one-line introduction from the picks so far, e.g. "빚을 갚으려고 길을 나선 매서운 눈의 전사".
+// A one-line introduction from the picks so far, e.g. "냉엄한 눈의 전사".
 function introDraft() {
   if (rules() === 'dw') {
-    const why = d.answers.동기;
-    const lead = why && /(려고|때문에)$/.test(why) ? `${why} 길을 나선 ` : '';
     const eyes = d.look?.눈;
-    return `${lead}${eyes ? `${eyes}의 ` : ''}${d.class || '모험가'}`;
+    return `${eyes ? `${eyes}의 ` : ''}${d.class || '모험가'}`;
   }
   if (rules() === 'coc7') {
     const thing = d.answers['소중한 물건'];
@@ -808,12 +834,12 @@ function previewHtml() {
   const sheet = { badges: [], stats: [], lists: [], tracks: [] };
   if (r === 'dw') {
     const c = classOf();
-    sheet.badges = [ch.class, ch.alignment, c && `피해 ${c.damage}`, c && `갑옷 ${c.armor}`].filter(Boolean);
+    sheet.badges = [ch.class, ch.alignment && `가치관 ${ch.alignment}`, c && `피해 ${c.damage}`, c && `장갑 ${dwGear().armor}`].filter(Boolean);
     if (c && d.scores) {
       sheet.tracks = [{ label: 'HP', value: c.hp + d.scores.체력, max: c.hp + d.scores.체력 }];
       sheet.stats = info.stats.map((s) => ({ label: s.name, value: sg(modOf(d.scores[s.name])), sub: String(d.scores[s.name]) }));
     }
-    if (ch.bonds?.length) sheet.lists.push({ title: '유대', items: ch.bonds.map((b) => b.text) });
+    if (ch.bonds?.length) sheet.lists.push({ title: '인연', items: ch.bonds.map((b) => b.text) });
   } else if (r === 'coc7') {
     const c = chars();
     sheet.badges = [ch.occupation].filter(Boolean);

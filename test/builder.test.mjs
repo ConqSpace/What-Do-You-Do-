@@ -10,8 +10,10 @@ test('Dungeon World builder: every class has recommended scores, gear, looks and
   const meta = RULESETS.dw.meta();
   for (const c of b.classes) {
     assert.deepEqual(Object.values(c.scores).sort((x, y) => y - x), meta.scores, `${c.name} uses each score once`);
-    assert.ok(c.play && c.gear.weapons.length && c.gear.extras.length >= c.gear.pick, c.name);
-    assert.ok(Object.values(c.looks).every((l) => l.length >= 3), c.name);
+    assert.ok(c.play && c.gear.groups.length, c.name);
+    for (const g of c.gear.groups) assert.ok(g.options.length >= g.pick, `${c.name}: ${g.label}`);
+    assert.ok(Object.values(c.looks).every((l) => l.length >= 2), c.name);
+    assert.ok(c.names.length >= 5 && c.bonds.length >= 3, c.name);
     for (const a of c.alignments) assert.ok(meta.fields[1].options.includes(a.name), `${c.name}: ${a.name}`);
     assert.ok(c.moves.length, c.name);
   }

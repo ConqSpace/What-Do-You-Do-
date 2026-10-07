@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { RULESETS } from '../lib/rules/index.mjs';
 import { ARCHETYPES } from '../public/archetypes.js';
+import { builderInfo } from '../lib/builder.mjs';
 
 // The genres of the premise 🎲 (RANDOM in public/app.js).
 const GENRES = ['fantasy', 'dungeon', 'horror', 'cyberpunk', 'wuxia', 'school'];
@@ -15,14 +16,22 @@ test('every rule system has ready-made characters with unique ids and names to p
       assert.ok(!ids.has(a.id), `duplicate id ${a.id}`);
       ids.add(a.id);
       assert.ok(a.icon && a.title && a.concept && a.background, a.id);
-      assert.ok(a.items.length >= 2 && a.names.length >= 2, a.id);
+      assert.ok((a.items?.length >= 2 || a.gear) && a.names.length >= 2, a.id);
     }
   }
 });
 
-test('Dungeon World cards keep their class, alignment and scores', () => {
+test('Dungeon World cards keep their class, alignment and scores, and pick gear the class offers', () => {
   const meta = RULESETS.dw.meta();
+  const classes = builderInfo('dw').classes;
   for (const a of ARCHETYPES.dw) {
+    const groups = classes.find((c) => c.name === a.class).gear.groups;
+    assert.equal(a.gear.length, groups.length, `${a.id}: one pick list per gear group`);
+    a.gear.forEach((picks, gi) => {
+      assert.equal(picks.length, groups[gi].pick, `${a.id}: ${groups[gi].label}`);
+      assert.ok(picks.every((i) => groups[gi].options[i]), `${a.id}: ${groups[gi].label}`);
+    });
+    assert.ok(classes.find((c) => c.name === a.class).alignments.some((x) => x.name === a.alignment), `${a.id}: ${a.alignment}`);
     assert.deepEqual(Object.values(a.scores).sort((x, y) => y - x), meta.scores, `${a.id} uses each score once`);
     assert.deepEqual(Object.keys(a.scores).sort(), [...meta.stats].sort(), a.id);
     const ch = RULESETS.dw.makeCharacter(a);

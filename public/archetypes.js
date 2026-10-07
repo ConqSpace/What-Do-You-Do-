@@ -1,44 +1,45 @@
 // Ready-made characters for the setup screen: pick a card and the sheet is filled in.
 // Each entry is already in the shape the server takes for the human's character
 // (name aside), so the rule modules can check it directly (test/archetypes.test.mjs).
-//   dw:   class, alignment, scores (16·15·13·12·9·8 once each)
+//   dw:   class, alignment, scores (16·15·13·12·9·8 once each), gear (picks per gear group
+//         of the class in lib/builder.mjs)
 //   d20:  stats (modifiers -1..+3 summing to 4), genre (a key of RANDOM in app.js)
 //   coc7: occupation, stats (characteristics), skills (raised ones, as typed), weapons
 
 export const ARCHETYPES = {
   dw: [
     { id: 'dw-fighter', icon: '🗡', title: '몰락 귀족 검사', concept: '빚에 쫓기는 몰락 귀족 검사', class: '전사', alignment: '중립',
-      scores: { 근력: 16, 민첩: 13, 체력: 15, 지능: 8, 지혜: 12, 매력: 9 },
+      scores: { 근력: 16, 민첩성: 13, 체력: 15, 지능: 8, 지혜: 12, 매력: 9 }, gear: [[1], [0, 1]],
       background: '몰락한 가문의 마지막 기사. 가문의 빚을 갚으려고 위험한 의뢰라면 가리지 않는다. 말수가 적고 약속은 반드시 지킨다.',
-      items: ['가문의 장검', '낡은 사슬 갑옷', '밧줄', '건량 3일치'], names: ['카엘', '브란', '헬가'] },
-    { id: 'dw-paladin', icon: '🛡', title: '젊은 성기사', concept: '맹세에 묶인 젊은 성기사', class: '성기사', alignment: '법',
-      scores: { 근력: 15, 민첩: 9, 체력: 13, 지능: 8, 지혜: 12, 매력: 16 },
+      names: ['그레고르', '브리안느', '카스토르'] },
+    { id: 'dw-paladin', icon: '🛡', title: '젊은 성기사', concept: '맹세에 묶인 젊은 성기사', class: '성기사', alignment: '질서',
+      scores: { 근력: 15, 민첩성: 9, 체력: 13, 지능: 8, 지혜: 12, 매력: 16 }, gear: [[1], [1]],
       background: '신전에 평생을 바치기로 맹세했지만 아직 신의 목소리를 들어 본 적이 없다. 정의감이 강하고 융통성이 없다.',
-      items: ['성표가 새겨진 방패', '롱소드', '판금 갑옷', '성수 한 병'], names: ['아드리안', '세실리아', '로엔'] },
-    { id: 'dw-ranger', icon: '🏹', title: '숲의 사냥꾼', concept: '약초에 밝은 숲의 사냥꾼', class: '레인저', alignment: '선',
-      scores: { 근력: 12, 민첩: 16, 체력: 13, 지능: 9, 지혜: 15, 매력: 8 },
-      background: '늑대 한 마리와 함께 국경 숲을 떠돈다. 사람보다 짐승이 편하고, 흔적은 절대 놓치지 않는다.',
-      items: ['사냥용 장궁', '화살 묶음', '약초 주머니', '사냥칼'], names: ['루나', '오린', '사샤'] },
-    { id: 'dw-thief', icon: '🗝', title: '뒷골목 열쇠장이', concept: '입이 가벼운 뒷골목 열쇠장이', class: '도둑', alignment: '혼돈',
-      scores: { 근력: 8, 민첩: 16, 체력: 12, 지능: 13, 지혜: 9, 매력: 15 },
+      names: ['룩스', '발레리아', '타데우스'] },
+    { id: 'dw-ranger', icon: '🏹', title: '숲의 사냥꾼', concept: '늑대와 함께 국경 숲을 떠도는 사냥꾼', class: '사냥꾼', alignment: '선',
+      scores: { 근력: 12, 민첩성: 16, 체력: 13, 지능: 9, 지혜: 15, 매력: 8 }, gear: [[1], [1]],
+      background: '늑대 한 마리와 함께 국경 숲을 떠돈다. 사람보다 짐승이 편하고, 자취는 절대 놓치지 않는다.',
+      names: ['노라', '할렉', '셀리온'] },
+    { id: 'dw-thief', icon: '🗝', title: '뒷골목 열쇠장이', concept: '입이 가벼운 뒷골목 열쇠장이', class: '도적', alignment: '혼돈',
+      scores: { 근력: 8, 민첩성: 16, 체력: 12, 지능: 13, 지혜: 9, 매력: 15 }, gear: [[0], [0], [1]],
       background: '도시 뒷골목에서 자랐다. 못 여는 자물쇠가 없다고 큰소리치지만, 사실 겁이 많아 늘 도망칠 길부터 찾는다.',
-      items: ['자물쇠 따개', '단검 두 자루', '독약 한 병', '검은 망토'], names: ['핀', '레이븐', '미로'] },
+      names: ['스패로', '마우스', '트릭시'] },
     { id: 'dw-wizard', icon: '✨', title: '견습 마법사', concept: '호기심 많은 견습 마법사', class: '마법사', alignment: '중립',
-      scores: { 근력: 8, 민첩: 15, 체력: 13, 지능: 16, 지혜: 12, 매력: 9 },
+      scores: { 근력: 8, 민첩성: 15, 체력: 13, 지능: 16, 지혜: 12, 매력: 9 }, gear: [[0], [0], [0]],
       background: '스승의 탑에서 금서를 몰래 읽다 쫓겨났다. 모르는 마법을 보면 위험해도 만져 봐야 직성이 풀린다.',
-      items: ['마법책', '참나무 지팡이', '잉크와 깃펜', '수상한 물약'], names: ['엘리아스', '티나', '오스윈'] },
+      names: ['아본', '이솔데', '제노'] },
     { id: 'dw-cleric', icon: '☀', title: '순례 사제', concept: '신앙을 잃어 가는 순례 사제', class: '사제', alignment: '선',
-      scores: { 근력: 12, 민첩: 8, 체력: 15, 지능: 9, 지혜: 16, 매력: 13 },
+      scores: { 근력: 12, 민첩성: 8, 체력: 15, 지능: 9, 지혜: 16, 매력: 13 }, gear: [[0], [1], [1]],
       background: '역병으로 마을을 잃은 뒤 신에게 답을 구하며 순례 중이다. 남을 돌보는 데는 망설임이 없지만 기도는 점점 짧아진다.',
-      items: ['성표', '철퇴', '붕대와 연고', '기도서'], names: ['세라핀', '마르쿠스', '이네스'] },
+      names: ['브린튼', '시그룬', '엘리즈'] },
     { id: 'dw-druid', icon: '🌿', title: '숲지기 드루이드', concept: '말없이 숲을 지키는 드루이드', class: '드루이드', alignment: '중립',
-      scores: { 근력: 8, 민첩: 13, 체력: 15, 지능: 12, 지혜: 16, 매력: 9 },
+      scores: { 근력: 8, 민첩성: 13, 체력: 15, 지능: 12, 지혜: 16, 매력: 9 }, gear: [[0], [1], [1]],
       background: '숲에서 태어나 짐승들 사이에서 컸다. 사람 말은 서툴지만, 숲이 앓으면 누구보다 먼저 안다.',
-      items: ['뼈 장식 지팡이', '씨앗 주머니', '가죽 망토', '말린 고기'], names: ['이브', '토른', '녹스'] },
+      names: ['아이비', '티슬', '엘라나'] },
     { id: 'dw-bard', icon: '🎻', title: '떠돌이 음유시인', concept: '전설의 끝을 노래로 남기려는 음유시인', class: '음유시인', alignment: '혼돈',
-      scores: { 근력: 8, 민첩: 15, 체력: 12, 지능: 13, 지혜: 9, 매력: 16 },
+      scores: { 근력: 8, 민첩성: 15, 체력: 12, 지능: 13, 지혜: 9, 매력: 16 }, gear: [[1], [0], [0], [0]],
       background: '어느 마을 여관에서든 노래 한 곡이면 방을 얻는다. 전설의 끝을 직접 보고 노래로 남기겠다며 모험에 끼었다.',
-      items: ['류트', '레이피어', '화려한 옷 한 벌', '노래 수첩'], names: ['릴리안', '다리오', '펠릭스'] },
+      names: ['플로리안', '카산드라', '세라핀'] },
   ],
 
   d20: [
