@@ -31,6 +31,7 @@ let lastRole = null;
 let secretsOpen = false;
 let sheetKey = null; // character shown on the sheet page
 let actionKey = ''; // what the action sheet currently shows (keeps selections across redraws)
+let sheetMin = false; // phone: the sheet folded to one line
 const chars = () => state?.characters || {};
 const camp = () => state?.campaign;
 
@@ -306,6 +307,10 @@ async function renderSecrets() {
   for (const f of s.facts || []) (groups[f.p] ??= []).push(f);
   const table = Object.entries(groups).map(([p, fs]) => `<div class="factgroup"><h4>${esc(p)}</h4><ul class="facts">${fs.map((f) => `<li><span>${esc(f.text)}</span><span class="who ${f.known === '비밀' ? 'secret' : f.known === '모두' ? 'all' : 'some'}">${esc(f.known)}</span></li>`).join('')}</ul></div>`).join('');
   box.innerHTML = `<h3>진실 표 (사실 장부)</h3>${table || '<p class="muted">아직 비어 있어요.</p>'}`
+    + (s.rules?.length ? `<h3>규칙</h3><ul class="rules">${s.rules.map((r) => `<li class="${r.fired.length ? 'fired' : ''}">
+        <div class="rh"><b>${esc(r.name)}</b>${r.ending ? '<span class="who secret">결말</span>' : ''}${r.repeat ? '<span class="who">반복</span>' : ''}<span class="who ${r.fired.length ? 'all' : ''}">${r.fired.length ? `발동 · 라운드 ${r.fired.join(', ')}` : '대기'}</span></div>
+        <div class="conds-list">${r.conds.map((t) => `<span class="${t.ok ? 'ok' : ''}">${t.ok ? '✓' : '✗'} ${esc(t.text)}${t.now !== undefined ? ` (지금 ${t.now})` : ''}</span>`).join('')}</div>
+        ${r.then.length ? `<div class="muted">→ ${r.then.map(esc).join(' / ')}</div>` : ''}${r.note ? `<div class="muted">${esc(r.note)}</div>` : ''}</li>`).join('')}</ul>` : '')
     + (s.rejected?.length ? `<h3>거절된 변경</h3><ul class="facts">${s.rejected.map((r) => `<li><span>${esc(r.op)}</span><span class="who secret">${esc(r.why)}</span></li>`).join('')}</ul>` : '')
     + `<h3>${esc(gmName())} 비밀 메모</h3><div class="pre">${esc(s.gmNotes || '(비어 있음)')}</div>`
     + Object.entries(s.notes || {}).map(([k, n]) => `<h3>${esc(charName(k))}의 메모</h3><div class="pre">${esc(n || '(비어 있음)')}</div>`).join('');
@@ -387,12 +392,13 @@ function renderActionSheet() {
   const choices = (c?.pendingChoices || []).filter((p) => p.who === 'user');
   const checks = state?.phase === 'roll' ? c?.pendingChecks || [] : [];
   const key = c && !c.paused ? [...choices.map((p) => `c${p.id}`), ...checks.map((p) => `r${p.id}`)].join(',') : '';
-  if (key === actionKey) return;
+  if (key === actionKey) { placeSheet(); return; }
   actionKey = key;
+  sheetMin = false;
   if (!key) {
     sheet.hidden = true;
     sheet.innerHTML = '';
-    document.body.classList.remove('sheet-open');
+    placeSheet();
     return;
   }
   if (choices.length) {
@@ -415,8 +421,16 @@ function renderActionSheet() {
       <button type="button" class="rollcta" data-roll="${p.id}" style="width:100%">${dice} 굴리기</button>
     </div>`).join('');
   }
+  sheet.insertAdjacentHTML('afterbegin', `<div class="minline">${choices.length ? '고를 차례예요' : '판정 차례예요'} · 탭해서 열기</div>`);
   sheet.hidden = false;
-  document.body.classList.toggle('sheet-open', mobile());
+  placeSheet();
+}
+
+function placeSheet() {
+  const sheet = $('#actionSheet');
+  const open = !sheet.hidden;
+  sheet.classList.toggle('min', open && sheetMin && mobile());
+  $('#sheetScrim').hidden = !(open && !sheetMin && mobile());
 }
 
 function renderComposer() {
@@ -643,7 +657,9 @@ $('#turnbar').addEventListener('click', (e) => {
   if (e.target.closest('[data-resume]')) api('/api/pause', { paused: false });
 });
 
+$('#sheetScrim').onclick = () => { sheetMin = true; placeSheet(); };
 $('#actionSheet').addEventListener('click', (e) => {
+  if (sheetMin && mobile()) { sheetMin = false; placeSheet(); return; }
   const roll = e.target.closest('[data-roll]');
   if (roll) { roll.disabled = true; api('/api/roll', { id: roll.dataset.roll }); return; }
   const opt = e.target.closest('.opt');
@@ -711,6 +727,6 @@ document.addEventListener('keydown', (e) => {
   if (!$('#sheetPage').hidden) closeSheet();
   else if (document.body.classList.contains('drawer-open')) closeDrawer();
 });
-matchMedia('(max-width: 899px)').addEventListener('change', () => { actionKey = null; renderActionSheet(); });
+matchMedia('(max-width: 899px)').addEventListener('change', placeSheet);
 
 connect();

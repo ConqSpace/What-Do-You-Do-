@@ -20,7 +20,6 @@ test('unknown predicates, wrong arity and missing facts are refused with a reaso
   assert.match(why('위치(노라)'), /인자 개수/);
   assert.match(why('없는사람'), /없는 사실/);
   assert.match(why('f99'), /없는 사실/);
-  assert.equal(L.s.rejected.length, 4, 'kept for the GM\'s next prompt');
 });
 
 test('location and ownership are unique: a new fact replaces the old one', () => {

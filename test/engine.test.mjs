@@ -244,3 +244,27 @@ test('fact ledger: a clue told to one character is announced only to them', asyn
   assert.equal(c.log.filter((m) => m.clue).at(-1).to, undefined, 'revealed to all: a public notice');
   assert.match(declareTurn(c, 'p2'), /은회색 비늘/);
 });
+
+test('rules: a firing reaches the GM\'s next prompt, an ending tells the GM to close, narration clears it', async () => {
+  const { engine } = table();
+  engine.newCampaign({ premise: '규칙 테스트', userRole: 'spectator', players: ['mock'], targetRounds: 30 });
+  await until(() => engine.c.phase === 'declare');
+  engine.setPaused(true);
+  const c = engine.c;
+  engine.applyFacts({
+    facts: { assert: ['시계(파국) = 5/6'] },
+    rules: { add: [{ name: '파국', when: ['시계(파국) >= 6'], then: ['사건(파국, 탑이 무너진다)'], ending: true, note: '나쁜 결말' }] },
+  });
+  assert.doesNotMatch(adjudicateTurn(c), /방금 발동한 규칙/);
+  assert.match(adjudicateTurn(c), /\[결말\] 파국: ✗ 시계\(파국\) >= 6 \(지금 5\)/);
+  engine.applyFacts({ facts: { assert: ['시계(파국) = +1'] } });
+  const gm = adjudicateTurn(c);
+  assert.match(gm, /방금 발동한 규칙[\s\S]*파국 \[결말 조건 충족\]: 나쁜 결말/);
+  assert.match(gm, /"end": true로 끝내/);
+  assert.ok(new Ledger(c.facts).list.some((f) => f.p === '사건' && f.args[0] === '파국'));
+  c.resolve = { stage: 'results', results: [], pendingRules: new Ledger(c.facts).triggered.map((t) => t.id) };
+  engine.finishRound({ narration: '탑이 무너진다.', end: true });
+  assert.equal(c.phase, 'ended');
+  assert.equal(new Ledger(c.facts).triggered.length, 0, 'narrated, cleared');
+  assert.ok(engine.secrets().rules.find((r) => r.name === '파국').fired.length);
+});
