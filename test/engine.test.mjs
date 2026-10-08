@@ -834,3 +834,63 @@ test('the GM is told to keep the fiction: no move without its position, no troub
   engine.c.resolve = { stage: 'adjudicate', who: 'p1', results: [] };
   assert.match(P.adjudicateTurn(engine.c), /판정을 고르기 전에: 이 캐릭터가 지금 그 행동을 할 수 있는 위치·상태인가/);
 });
+
+test('positions in the ledger: a defend from across the room goes back to the GM with the reason; its second answer stands', async () => {
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '보스전', userRole: 'spectator', players: ['mock', 'mock'] });
+  engine.setPaused(true);
+  await until(() => engine.busy.size === 0);
+  const c = engine.c;
+  c.characters.p1 = engine.makeCharacter({ name: '탄', class: '마법사' }, 'p1');
+  c.characters.p2 = engine.makeCharacter({ name: '도윤', class: '전사' }, 'p2');
+  c.prep = null;
+  engine.applyFacts({ facts: { assert: [{ fact: '위치(탄, 돌턱)', to: 'all' }, { fact: '위치(도윤, 돌다리)', to: 'all' }] } });
+
+  // Unknown positions stop nothing; the same place is fine; different places are out of reach.
+  assert.deepEqual(engine.outOfReach([{ who: 'p2', move: '방어', target: '브론' }]), []);
+  assert.deepEqual(engine.outOfReach([{ who: 'p2', move: '위험 돌파', target: 'p1' }]), []);
+  const out = engine.outOfReach([{ who: 'p2', move: '방어', target: 'p1' }]);
+  assert.equal(out.length, 1);
+  assert.ok(out[0].includes('도윤은(는) 돌다리, 탄은(는) 돌턱에 있다'));
+
+  const turns = [];
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, brief, t, ctx) => {
+    if (kind !== 'adjudicate') return orig(seat, kind, brief, t, ctx);
+    turns.push(t);
+    const retry = t.includes('서버가 받지 않은 판정');
+    return { ok: true, text: JSON.stringify({ checks: [retry ? { who: 'p2', move: '위험 돌파', stat: '민첩성', why: '웅덩이 건너기' } : { who: 'p2', move: '방어', target: 'p1', why: '탄 지키기' }] }) };
+  };
+  c.round = 1;
+  c.order = ['p2', 'p1'];
+  c.acted = {};
+  c.declared = { p2: true };
+  c.turn = 'p2';
+  c.phase = 'resolve';
+  c.resolve = { stage: 'adjudicate', who: 'p2', results: [] };
+  engine.setPaused(false);
+  await until(() => c.log.some((m) => m.type === 'roll' && m.from === 'p2'));
+  engine.setPaused(true);
+  assert.equal(turns.length, 2, 'asked twice');
+  assert.ok(turns[1].includes('방어은(는) 대상과 같은 곳에서만 할 수 있다'));
+  const roll = c.log.find((m) => m.type === 'roll' && m.from === 'p2');
+  assert.equal(roll.roll.move, '위험 돌파', 'the second answer is what rolled');
+  engine.backends.chat = orig;
+});
+
+test('a boss whose clock filled this turn may be cleared away in the same reply, and its fall is still recorded', async () => {
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '보스전', userRole: 'spectator', players: ['mock'] });
+  engine.setPaused(true);
+  const c = engine.c;
+  c.foes = [];
+  engine.applyFoes([{ name: '용광로지기', boss: true }]);
+  const boss = engine.findFoe('용광로지기');
+  boss.progress = boss.clock;
+  boss.news = 'down';
+  c.resolve = { stage: 'results', who: 'p1', results: [] };
+  engine.endTurn({ narration: '거인이 무너집니다.', foes: [{ name: '용광로지기', remove: true }] });
+  assert.equal(engine.findFoe('용광로지기'), null, 'cleared away');
+  assert.ok(!c.log.some((m) => m.to === 'gm' && (m.text || '').includes('치울 수 없다')));
+  assert.ok(new Ledger(c.facts).list.some((f) => f.p === '상태' && f.args[0] === '용광로지기' && f.args[1] === '쓰러짐'));
+});
