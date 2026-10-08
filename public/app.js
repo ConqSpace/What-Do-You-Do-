@@ -11,7 +11,7 @@ const $$ = (s) => [...document.querySelectorAll(s)];
 const OUTCOME = { critical: '대성공', success: '성공', failure: '실패', fumble: '대실패' };
 const OLD_TIER = { critical: 'crit', success: 'good', failure: 'bad', fumble: 'fumble' };
 const PHASE = { setup: '준비 전', prep: '캠페인 준비 중', declare: '선언', resolve: '판정 중', roll: '주사위 · 선택', 'gm-wait': 'GM 서술 대기', ended: '종료' };
-const STATUS = { thinking: '생각 중', talking: '말하는 중', done: '✓ 선언', waiting: '차례 대기', rolling: '굴릴 차례', choosing: '고르는 중', down: '쓰러짐', dead: '사망', idle: '' };
+const STATUS = { thinking: '생각 중', done: '✓ 선언', waiting: '차례 대기', rolling: '굴릴 차례', choosing: '고르는 중', down: '쓰러짐', dead: '사망', idle: '' };
 const DICE = { d20: 'd20', dw: '2d6', coc7: 'd100' };
 // [label, premise, tone, genre (a key of RANDOM)]: the d20 gallery until it has written stories.
 const PRESETS = [
@@ -90,7 +90,7 @@ let sheetMin = false; // phone: the sheet folded to one line
 // How fast new text is revealed (the header button cycles through).
 const PACE_LABEL = { slow: '느리게', normal: '보통', fast: '빠르게', off: '즉시' };
 const PACE_NEXT = { slow: 'normal', normal: 'fast', fast: 'off', off: 'slow' };
-// How much the AI players talk among themselves (reactions, huddles); the header button cycles.
+// How much the AI players talk among themselves (reactions); the header button cycles.
 const CHATTER_LABEL = { normal: '잡담 보통', low: '잡담 적게', off: '잡담 끔' };
 const CHATTER_NEXT = { normal: 'low', low: 'off', off: 'normal' };
 const CHATTER_SHORT = { normal: '잡담', low: '잡담↓', off: '잡담✕' }; // a phone's header is narrow
@@ -271,7 +271,7 @@ function msgHtml(m, fresh) {
       </div></div>`;
     }
     // Table talk: quiet chat lines, apart from the declarations' bubbles. OOC is the player
-    // (the AI's name, its character in brackets); a huddle's in-character line is the character.
+    // (the AI's name, its character in brackets); a `talk` line (older saves) is the character.
     case 'ooc': {
       const who = m.from === 'user' ? esc(camp()?.userName || '나')
         : `${esc(seatOf(m.from)?.label || m.from)}${chars()[m.from] ? `<span class="of">(${esc(charName(m.from))})</span>` : ''}`;
@@ -597,7 +597,7 @@ function renderHeader() {
   const chat = $('#chatterBtn');
   chat.hidden = !c;
   chat.textContent = (mobile() ? CHATTER_SHORT : CHATTER_LABEL)[c?.chatter || 'normal'];
-  chat.title = 'AI 플레이어끼리 주고받는 말(반응, 작전 회의): 보통 · 적게 · 끔 (누르면 바뀜)';
+  chat.title = 'AI 플레이어끼리 주고받는 잡담: 보통 · 적게 · 끔 (누르면 바뀜)';
   // Off: the AI players' talk already in the log is folded away too.
   document.body.classList.toggle('chatter-off', c?.chatter === 'off');
   const pb = $('#pauseBtn');
@@ -633,16 +633,13 @@ function renderTurnbar() {
     if (myTurn && !thinking.length) parts.push(`<b>${esc(charName('user'))}</b>, 어떻게 하시겠습니까?`);
     else if (myTurn) parts.push('먼저 선언해도 돼요');
     if (thinking.length) parts.push(`${thinking.map(esc).join(', ')} 생각 중…`);
-    // A huddle before the round's first declaration: the human may join with an OOC line.
-    if (c.huddle) parts.push(c.userRole === 'player' ? '동료들이 작전 회의 중 · 잡담으로 끼어들 수 있어요' : '플레이어들이 작전 회의 중…');
     if (state.phase === 'gm-wait') parts.push(c.wipe ? '일행이 모두 쓰러졌어요. 다음 서술로 이야기를 닫아 주세요.' : 'GM(당신)의 서술을 기다려요. 보내면 다음 라운드가 시작돼요.');
     // A fallen character: the human stays at the table, watching and chatting.
     const down = c.userRole === 'player' && chars().user?.down;
     if (down === 'dead') parts.unshift(`☠ <b>${esc(charName('user'))}</b>은(는) 죽었어요. 테이블에 남아 지켜보고 잡담할 수 있어요.`);
     else if (down) parts.unshift(`💤 <b>${esc(charName('user'))}</b>은(는) 쓰러져 있어요. 누가 치료해 주면 다시 차례가 와요.`);
     // The page is still revealing what came in: offer to catch up.
-    const join = c.huddle && c.userRole === 'player' && mode !== 'ooc' ? '<button type="button" class="ghost" data-join>끼어들기</button>' : '';
-    if (parts.length || behind) html = `<span class="grow">${parts.join(' · ')}</span>${join}${myTurn ? '<button type="button" class="ghost" data-pass>넘기기</button>' : ''}${skip}`;
+    if (parts.length || behind) html = `<span class="grow">${parts.join(' · ')}</span>${myTurn ? '<button type="button" class="ghost" data-pass>넘기기</button>' : ''}${skip}`;
   }
   bar.innerHTML = html;
   bar.hidden = !html;
@@ -968,7 +965,6 @@ $('#turnbar').addEventListener('click', (e) => {
   if (e.target.closest('[data-resume]')) api('/api/pause', { paused: false });
   if (e.target.closest('[data-build]')) openBuilder();
   if (e.target.closest('[data-skip]')) skipAhead();
-  if (e.target.closest('[data-join]')) { mode = 'ooc'; renderComposer(); renderTurnbar(); $('#input').focus(); }
 });
 
 $('#sheetScrim').onclick = () => { sheetMin = true; placeSheet(); };

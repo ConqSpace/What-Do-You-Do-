@@ -1,4 +1,5 @@
-// Table talk: reactions to notable moments and huddles before a round (lib/talk.mjs).
+// Table talk: reactions to notable moments (lib/talk.mjs), and teammates calling each other in
+// their declarations.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,7 +9,7 @@ import { Backends } from '../lib/backends.mjs';
 import { Store } from '../lib/store.mjs';
 import { Engine } from '../lib/engine.mjs';
 import { setRng } from '../lib/dice.mjs';
-import { adjudicateTurn, declareTurn, gmBrief } from '../lib/prompts.mjs';
+import { adjudicateTurn, calledOut, declareTurn, gmBrief } from '../lib/prompts.mjs';
 import * as T from '../lib/talk.mjs';
 
 function table(extra = {}) {
@@ -93,62 +94,47 @@ test('reactions are rate-limited: one a turn, a gap before weaker moments, a coo
   assert.ok(T.bonded({ a: { name: '가', bonds: [{ with: '나', text: '' }] }, b: { name: '나' } }, 'b', 'a'));
 });
 
-test('huddles: a new scene or a changed boss always calls one; the GM\'s open question only after quiet rounds', () => {
-  const tune = T.TUNING.normal;
-  assert.equal(T.huddleReason({ pending: [{ kind: 'scene', title: '수문' }], round: 3, lastRound: 2, tune }).kind, 'scene');
-  assert.equal(T.huddleReason({ pending: [{ kind: 'boss', name: '수문지기' }], round: 3, lastRound: 2, tune }).kind, 'boss');
-  assert.equal(T.huddleReason({ open: true, round: 3, lastRound: 2, tune }), null, 'too soon after the last');
-  assert.equal(T.huddleReason({ open: true, round: 4, lastRound: 2, tune }).kind, 'open');
-  assert.equal(T.huddleReason({ pending: [{ kind: 'setback', who: 'p2' }], open: true, round: 4, lastRound: 2, tune }).kind, 'setback');
-  assert.equal(T.huddleReason({ open: true, round: 9, tune: T.TUNING.low }), null, 'turned down: not for a question');
-  assert.equal(T.huddleReason({ pending: [{ kind: 'scene' }], round: 9, tune: T.TUNING.off }), null);
-  assert.equal(T.huddleReason({ pending: [{ kind: 'scene' }], round: 9, lastRound: 8, tune: T.TUNING.low }), null, 'turned down: scenes wait their turn too');
-  assert.equal(T.huddleReason({ pending: [{ kind: 'boss' }], round: 9, lastRound: 8, tune: T.TUNING.low }).kind, 'boss');
-
-  assert.ok(T.asksEveryone('횃불이 꺼집니다. 어떻게 하시겠습니까?', ['브론']));
-  assert.ok(T.asksEveryone('브론, 여러분 모두 어떻게 하시겠습니까?', ['브론']));
-  assert.ok(!T.asksEveryone('횃불이 꺼집니다. 브론, 어떻게 하시겠습니까?', ['브론']), 'a question to one character');
-  assert.ok(!T.asksEveryone('횃불이 꺼집니다.', ['브론']));
-
-  // Two to four lines; one AI player alone talks once (to the human).
-  assert.deepEqual([0, 1, 2, 3, 5].map((n) => T.huddleSize(n, tune)), [0, 1, 3, 4, 4]);
-  assert.equal(T.huddleSize(4, T.TUNING.low), 2);
-  // Whoever it's about goes first; nobody speaks twice in a row.
-  const h = { first: 'p2', spoken: [] };
-  assert.equal(T.nextSpeaker(h, ['p1', 'p2', 'p3']), 'p2');
-  assert.equal(T.nextSpeaker({ ...h, spoken: ['p2'] }, ['p1', 'p2', 'p3']), 'p1');
-  assert.equal(T.nextSpeaker({ ...h, spoken: ['p2', 'p1', 'p3'] }, ['p1', 'p2', 'p3']), 'p1');
-  assert.equal(T.nextSpeaker({ spoken: ['p1'] }, ['p1']), null);
-  assert.equal(T.cleanLine('"아니 뭐하냐고"\n두 번째 줄'), '아니 뭐하냐고');
-});
-
 // ---------------------------------------------------------------------------
 // At the table
 
-test('the first scene opens with a bounded huddle before anyone declares, and the declaration hears the plan', async () => {
+test('no huddle: the first declaration comes right after the opening, with no talk in between', async () => {
   const engine = table();
   const calls = freezeTurns(engine);
   engine.newCampaign({ rules: 'dw', premise: '테스트', userRole: 'spectator', players: ['mock', 'mock', 'mock'] });
   await until(() => calls.some((x) => x.kind === 'declare'));
-  const c = engine.c;
-  const huddle = chats(c, 'huddle');
-  assert.equal(huddle.length, 4, 'three AI players: four lines');
   const firstDeclare = calls.findIndex((x) => x.kind === 'declare');
-  assert.ok(calls.slice(0, firstDeclare).filter((x) => x.kind === 'talk').length >= 4, 'the huddle comes before the first declaration');
-  for (let i = 1; i < huddle.length; i++) assert.notEqual(huddle[i].from, huddle[i - 1].from, 'nobody twice in a row');
-  for (const m of huddle) {
-    assert.ok(['p1', 'p2', 'p3'].includes(m.from));
-    assert.ok(['ooc', 'talk'].includes(m.type));
-    assert.equal(m.round, 1);
-  }
-  // Each speaker heard the line before (the huddle prompt carries the log), and the side calls
-  // ran apart from the seats' own working folders.
-  const talks = calls.filter((x) => x.kind === 'talk');
-  assert.ok(talks.every((x) => x.seat.endsWith('-talk')));
-  assert.ok(talks[1].turn.includes(huddle[0].text));
-  assert.equal(c.huddle, null);
-  assert.match(calls[firstDeclare].turn, /동료들과 나눈 이야기가 기록에 있다/);
-  assert.ok(calls[firstDeclare].turn.includes(huddle[huddle.length - 1].text));
+  assert.equal(calls.slice(0, firstDeclare).filter((x) => x.kind === 'talk').length, 0);
+  assert.equal(chats(engine.c).length, 0);
+  assert.equal(T.cleanLine('"아니 뭐하냐고"\n두 번째 줄'), '아니 뭐하냐고');
+});
+
+test('a teammate called by name hears the latest call on their own turn, until they answer or it grows old', async () => {
+  const engine = table();
+  engine.newCampaign({ rules: 'dw', premise: '테스트', userRole: 'spectator', players: ['mock', 'mock', 'mock'] });
+  engine.setPaused(true);
+  await until(() => engine.busy.size === 0);
+  const c = engine.c;
+  c.characters.p1 = engine.makeCharacter({ name: '폭스', class: '전사' }, 'p1');
+  c.characters.p2 = engine.makeCharacter({ name: '노라', class: '사냥꾼' }, 'p2');
+  c.characters.p3 = engine.makeCharacter({ name: '아본', class: '마법사' }, 'p3');
+  c.prep = null;
+  c.round = 3;
+  engine.post({ type: 'declare', from: 'p2', say: '', action: '활을 겨눌게요' });
+  engine.post({ type: 'declare', from: 'p3', say: '노라, 뒤를 봐 줘.', action: '주문을 외울게요' });
+  engine.post({ type: 'declare', from: 'p1', say: '내가 놈을 붙든다, 노라, 그 틈에 애를 빼!', action: '방패로 밀어붙일게요' });
+  assert.equal(calledOut(c, 'p2').from, 'p1', 'only the latest call');
+  assert.equal(calledOut(c, 'p1'), null, '폭스 spoke last: nothing since');
+  const turn = declareTurn(c, 'p2');
+  assert.ok(turn.includes('폭스이(가) 너를 불렀다: "내가 놈을 붙든다, 노라, 그 틈에 애를 빼!"'));
+  assert.ok(!turn.includes('너를 불렀다: "노라, 뒤를 봐 줘."'));
+  // Once 노라 has answered, it's behind her.
+  engine.post({ type: 'declare', from: 'p2', say: '알았어, 폭스!', action: '아이를 끌어낼게요' });
+  assert.equal(calledOut(c, 'p2'), null);
+  assert.doesNotMatch(declareTurn(c, 'p2'), /너를 불렀다/);
+  assert.equal(calledOut(c, 'p1').from, 'p2');
+  // A call from two rounds back is stale: the moment has passed.
+  c.round = 5;
+  assert.equal(calledOut(c, 'p1'), null);
 });
 
 test('a 대실패 gets one line from another player, the roller may answer once, and a second one that turn gets none', async () => {
@@ -195,51 +181,16 @@ test('a reaction that comes back after the next declaration is dropped', async (
   assert.equal(chats(c, 'react').length, 0);
 });
 
-test('the human joins a huddle with an OOC line: one more line, and the next speaker answers it', async () => {
-  const engine = table();
-  const gates = [];
-  const calls = freezeTurns(engine, (ctx) => (ctx.event === 'huddle' ? new Promise((r) => gates.push(r)) : null));
-  engine.newCampaign({
-    rules: 'dw', premise: '테스트', userRole: 'player', players: ['mock', 'mock'],
-    userChar: { name: '아린', class: '전사', concept: '견습 기사' },
-  });
-  await until(() => engine.c.huddle && gates.length === 1);
-  const c = engine.c;
-  assert.equal(c.huddle.max, 3);
-  assert.equal(engine.view().campaign.huddle, true);
-  assert.equal(engine.userPost('ooc', '저 노인 믿어도 돼?'), null);
-  assert.equal(c.huddle.max, 4, 'one more line to answer the human');
-  gates.shift()();
-  await until(() => gates.length === 1);
-  const asked = calls.filter((x) => x.kind === 'talk').at(-1);
-  assert.match(asked.turn, /이 회의에 한 말이 있다/);
-  assert.ok(asked.turn.includes('저 노인 믿어도 돼?'));
-  while (c.huddle) { gates.shift()?.(); await sleep(5); }
-  assert.equal(chats(c, 'huddle').length, 4);
-  // The human isn't waited on in the huddle: the round goes on (here it's the human's turn).
-  assert.equal(c.phase, 'declare');
-  assert.equal(c.turn, 'user');
-});
-
-test('a huddle is bounded in time: slow players are cut off and the round goes on', async () => {
-  const engine = table({ huddleSec: 0.05 });
-  const calls = freezeTurns(engine, (ctx) => (ctx.event === 'huddle' ? never() : null));
-  engine.newCampaign({ rules: 'dw', premise: '테스트', userRole: 'spectator', players: ['mock', 'mock'] });
-  await until(() => calls.some((x) => x.kind === 'declare'), 3000);
-  assert.equal(engine.c.huddle, null);
-  assert.equal(chats(engine.c, 'huddle').length, 0);
-});
-
-test('OOC never reaches the GM as fiction: banter stays out, huddle lines and the human\'s are labeled', async () => {
+test('OOC never reaches the GM as fiction: banter stays out, other OOC is labeled, an older save\'s party talk is speech', async () => {
   const engine = table();
   freezeTurns(engine);
   engine.newCampaign({ rules: 'dw', premise: '테스트', userRole: 'player', players: ['mock', 'mock'], userChar: { name: '아린', class: '전사' } });
-  await until(() => engine.c.phase === 'declare' && !engine.c.huddle);
+  await until(() => engine.c.phase === 'declare');
   const c = engine.c;
   engine.post({ type: 'ooc', from: 'p1', text: '아니 뭐하냐고 진짜', chat: 'react' });
   engine.post({ type: 'ooc', from: 'p2', text: '주사위 바꿔라', chat: 'reply' });
   engine.post({ type: 'talk', from: 'p2', text: '수문부터 열자, 사슬은 내가', chat: 'huddle' });
-  engine.post({ type: 'ooc', from: 'p1', text: '이거 함정 냄새 나는데', chat: 'huddle' });
+  engine.post({ type: 'ooc', from: 'p1', text: '이거 함정 냄새 나는데' });
   engine.userPost('ooc', '잠깐 화장실 다녀올게요');
   const gm = adjudicateTurn(c);
   assert.ok(!gm.includes('아니 뭐하냐고') && !gm.includes('주사위 바꿔라'), 'reactions are banter, not for the GM');
@@ -272,27 +223,22 @@ test('table talk can be turned down or off; off makes no calls at all', async ()
   assert.equal(engine.view().campaign.chatter, 'low');
 });
 
-test('the demo table talks: a whole campaign with reactions and huddles still reaches its end', async () => {
+test('the demo table talks: a whole campaign with reactions still reaches its end', async () => {
   const engine = table();
   engine.newCampaign({ rules: 'dw', premise: '테스트', userRole: 'spectator', players: ['mock', 'mock', 'mock'] });
   await until(() => engine.c.phase === 'ended', 15000);
-  const c = engine.c;
-  assert.ok(chats(c, 'huddle').length >= 2);
-  for (const m of chats(c)) {
+  for (const m of chats(engine.c)) {
     assert.ok(['p1', 'p2', 'p3'].includes(m.from), 'only AI players talk on their own');
-    assert.ok(['ooc', 'talk'].includes(m.type));
+    assert.equal(m.type, 'ooc');
+    assert.ok(['react', 'reply'].includes(m.chat));
   }
-  // Per round, a huddle never runs past its size.
-  const byRound = {};
-  for (const m of chats(c, 'huddle')) byRound[m.round] = (byRound[m.round] || 0) + 1;
-  assert.ok(Object.values(byRound).every((n) => n <= 4));
 });
 
 test("the human's bold move gets a word from an AI player too", async () => {
   const engine = table();
   const calls = freezeTurns(engine);
   engine.newCampaign({ rules: 'dw', premise: '테스트', userRole: 'player', players: ['mock', 'mock'], userChar: { name: '아린', class: '전사' } });
-  await until(() => engine.c.phase === 'declare' && !engine.c.huddle && engine.c.turn === 'user');
+  await until(() => engine.c.phase === 'declare' && engine.c.turn === 'user');
   const c = engine.c;
   c.characters.user.hp = 2;
   assert.equal(engine.userPost('declare', '"비켜!" 혼자 정면으로 달려들게요'), null);
@@ -301,22 +247,3 @@ test("the human's bold move gets a word from an AI player too", async () => {
   assert.match(calls.filter((x) => x.kind === 'talk').at(-1).turn, /HP가 2\/\d+밖에 안 남았는데/);
 });
 
-test('a huddle ends early once someone has nothing to add; a player whose call fails is just skipped', async () => {
-  const engine = table();
-  const replies = [{ line: '종탑부터 가자.' }, null, { line: '' }];
-  let asked = 0;
-  const orig = engine.backends.chat.bind(engine.backends);
-  engine.backends.chat = async (seat, kind, brief, turn, ctx) => {
-    if (['declare', 'adjudicate', 'results'].includes(kind)) return never();
-    if (kind === 'talk' && ctx.event === 'huddle') {
-      const r = replies[Math.min(ctx.n, 2)];
-      asked++;
-      return r ? { ok: true, text: JSON.stringify(r) } : { ok: false, text: '', detail: '402' };
-    }
-    return orig(seat, kind, brief, turn, ctx);
-  };
-  engine.newCampaign({ rules: 'dw', premise: '테스트', userRole: 'spectator', players: ['mock', 'mock', 'mock'] });
-  await until(() => engine.c.phase === 'declare' && engine.busy.has(engine.c.turn));
-  assert.equal(chats(engine.c, 'huddle').length, 1);
-  assert.equal(asked, 4, 'the first line, the failed call (tried twice), and the empty one that closed it');
-});

@@ -28,8 +28,7 @@ const DEFAULT_CFG = {
   autoPauseRounds: 8, // spectator: pause after this many rounds without a word from the human (0 = never)
   mockDelayMs: 700,
   readPace: 'normal', // how fast the page reveals new text: 'slow' | 'normal' | 'fast' | 'off' (at once)
-  chatter: 'normal', // the AI players' table talk (reactions, huddles): 'normal' | 'low' | 'off'
-  huddleSec: 75, // a huddle before a round's first declaration ends after this, however far it got
+  chatter: 'normal', // the AI players' table talk (reactions): 'normal' | 'low' | 'off'
   backends: {
     claude: { model: 'sonnet' },
     codex: { model: 'gpt-6-sol', effort: 'low' },

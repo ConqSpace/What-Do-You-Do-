@@ -167,7 +167,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .seat .name { font-size: 12px; line-height: 1.2; max-width: 66px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .seat .sub, .seat .concept, .seat .hptext, .seat .conds { display: none; }
 .seat .status { display: none; font-size: 12px; line-height: 1.2; color: var(--accent); }
-.seat.st-talking .avatar { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .seat.st-thinking .avatar, .seat.st-waiting .avatar, .seat.st-rolling .avatar, .seat.st-choosing .avatar { box-shadow: 0 0 0 2px var(--accent); }
 .seat.st-done .avatar { box-shadow: 0 0 0 2px var(--good); }
 .seat.st-thinking .name { display: none; }
@@ -234,7 +233,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .ooc { font-size: 13px; color: var(--muted); padding-left: 40px; }
 .ooc b { color: color-mix(in srgb, var(--text) 75%, var(--bg)); font-weight: 600; }
 .ooc .of { font-weight: 400; color: var(--muted); margin-left: 2px; }
-/* A character's words to the party in a huddle: speech, but a quiet line, not a declaration. */
+/* A character's words to the party (older saves): speech, but a quiet line, not a declaration. */
 .talk { font-size: 14px; padding-left: 40px; color: color-mix(in srgb, var(--text) 85%, var(--bg)); }
 .talk b { font-size: 13px; font-weight: 600; margin-right: 2px; }
 .talk .say::before { content: '“'; }
