@@ -165,13 +165,23 @@
         </section>
 
         <section class="step" data-step="story" hidden>
-          <h2 class="q">어떤 이야기인가요?</h2>
-          <p class="muted" id="storyNote">비워 두면 GM이 룰에 어울리게 정해요.</p>
-          <div class="presets" id="presets"></div>
-          <label for="premise">전제</label>
-          <textarea id="premise" name="premise" rows="3" placeholder="비워 두면 GM이 정해요 · 예: 안개 낀 항구 도시에서 연쇄 실종 사건을 쫓는 코즈믹 호러"></textarea>
-          <label for="tone">분위기</label>
-          <input id="tone" name="tone" placeholder="비워 두면 GM이 정해요 · 예: 진지하고 음산하게">
+          <h2 class="q">어떤 이야기를 할까요?</h2>
+          <div class="shero" id="storyHero"></div>
+          <div id="storyRows"></div>
+          <details class="sedit" id="storyEdit">
+            <summary>직접 고치기 <span class="muted">전제 · 분위기 · 첫 장면 · 길이</span></summary>
+            <div class="seditbody">
+              <label for="premise">전제</label>
+              <textarea id="premise" name="premise" rows="3" placeholder="안개 낀 항구 도시에서 연쇄 실종 사건을 쫓는 이야기"></textarea>
+              <label for="tone">분위기</label>
+              <input id="tone" name="tone" placeholder="진지하고 음산하게">
+              <label for="opening">첫 장면 (선택)</label>
+              <input id="opening" name="opening" placeholder="부두에 떠밀려 온 빈 구명정 한 척">
+              <label for="storyLength">길이</label>
+              <select id="storyLength" name="storyLength"><option value="short">짧은 모험</option><option value="long">긴 모험</option><option value="">마스터에게 맡기기</option></select>
+            </div>
+          </details>
+          <input type="hidden" name="storyTitle" id="storyTitle">
           <label for="userName">내 이름</label>
           <input id="userName" name="userName" value="방장">
         </section>

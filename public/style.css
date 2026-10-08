@@ -459,6 +459,42 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
 .presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .presets button { background: var(--surface2); color: var(--text); border-color: var(--line); font-size: 13px; font-weight: 500; min-height: 40px; border-radius: 20px; padding: 0 12px; }
 .presets button.dice { background: var(--me-bg); color: var(--accent); border-color: var(--me-line); }
+/* story gallery: the picked story large, poster tiles in rows (Netflix-like) */
+.shero { display: flex; gap: 14px; padding: 14px; border-radius: var(--radius); background: var(--surface2); border: 1px solid var(--line); }
+.shart { width: 84px; height: 116px; flex: none; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 40px; }
+.shtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.shtitle { font-family: var(--serif); font-size: 21px; font-weight: 700; line-height: 1.3; }
+.shmeta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--muted); }
+.shmeta .brec { vertical-align: 0; }
+.shsyn { margin: 0; font-size: 14px; line-height: 1.6; }
+.shep { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line2); font-size: 13px; }
+.shep b { color: var(--accent); font-size: 12.5px; }
+.shtags { font-size: 12px; color: var(--muted); }
+.srow .sub { margin: 14px 0 6px; }
+.stiles { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 4px; scrollbar-width: thin; }
+.stile {
+  flex: none; width: 128px; height: 80px; padding: 8px 10px; border-radius: 10px; scroll-snap-align: start;
+  display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; text-align: left;
+  color: var(--text); border: 1px solid var(--line); font-weight: 600;
+}
+.stile.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.stile .si { font-size: 22px; line-height: 1; }
+.stile .st { font-size: 13px; line-height: 1.3; }
+.r-start { background: var(--surface2); }
+.r-kingdom { background: color-mix(in srgb, #7b6cd9 30%, var(--surface2)); }
+.r-dungeon { background: color-mix(in srgb, #c0623a 30%, var(--surface2)); }
+.r-genres { background: color-mix(in srgb, #3f8f86 30%, var(--surface2)); }
+.sedit { margin-top: 12px; border-top: 1px solid var(--line); }
+.sedit summary { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; list-style: none; font-size: 15px; }
+.sedit summary::-webkit-details-marker { display: none; }
+.sedit summary::before { content: '▸'; color: var(--muted); transition: transform .15s; }
+.sedit[open] summary::before { transform: rotate(90deg); }
+.sedit summary .muted { font-size: 13px; }
+.seditbody { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
+@media (max-width: 899px) {
+  .shero { padding: 12px; gap: 10px; }
+  .shart { width: 56px; height: 76px; font-size: 28px; }
+}
 .namebox { display: flex; gap: 6px; }
 .namebox input { flex: 1; min-width: 0; }
 .namebox .dice { flex: none; width: 48px; padding: 0; background: var(--me-bg); color: var(--accent); border-color: var(--me-line); }

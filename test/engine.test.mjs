@@ -390,3 +390,25 @@ test('character builder: CoC characteristics come from server rolls, or valid qu
   assert.deepEqual(e2.c.characters.user.chars, quick);
   e2.setPaused(true);
 });
+
+test('a story from the gallery: its title stays, and the GM gets its first scene and size', async () => {
+  const { engine } = table();
+  let turn = '';
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, brief, t, ctx) => {
+    if (kind === 'worldbuild') turn = t;
+    return orig(seat, kind, brief, t, ctx);
+  };
+  engine.newCampaign({ rules: 'dw', premise: '종이 울리는 국경 마을', title: '잿빛 종탑의 비밀', opening: '종탑 아래 남은 작은 신발 한 짝', length: 'short', userRole: 'spectator', players: ['mock'] });
+  await until(() => engine.c.prep?.step !== 'world');
+  assert.match(turn, /첫 장면: 종탑 아래 남은 작은 신발 한 짝/);
+  assert.match(turn, /이야기 규모: 짧은 모험/);
+  assert.match(turn, /제목: 잿빛 종탑의 비밀/);
+  assert.equal(engine.c.title, '잿빛 종탑의 비밀');
+  engine.setPaused(true);
+
+  const { engine: e2 } = table();
+  e2.newCampaign({ rules: 'dw', premise: 'x', length: 'forever', userRole: 'spectator', players: ['mock'] });
+  assert.equal(e2.c.length, '', 'unknown lengths are dropped');
+  e2.setPaused(true);
+});

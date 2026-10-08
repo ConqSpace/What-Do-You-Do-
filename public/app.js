@@ -3,6 +3,7 @@
 // choices come up in a bottom sheet, a character sheet is a full page.
 
 import { initBuilder, renderBuilder, builderNeeded, openBuilder } from './builder.js';
+import { STORIES, STORY_ROWS, STARTS, LENGTH } from './stories.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -12,7 +13,7 @@ const OLD_TIER = { critical: 'crit', success: 'good', failure: 'bad', fumble: 'f
 const PHASE = { setup: '준비 전', prep: '캠페인 준비 중', declare: '선언', resolve: '판정 중', roll: '주사위 · 선택', 'gm-wait': 'GM 서술 대기', ended: '종료' };
 const STATUS = { thinking: '생각 중', done: '✓ 선언', waiting: '차례 대기', rolling: '굴릴 차례', choosing: '고르는 중', idle: '' };
 const DICE = { d20: 'd20', dw: '2d6', coc7: 'd100' };
-// [label, premise, tone, genre (a key of RANDOM)]
+// [label, premise, tone, genre (a key of RANDOM)]: the d20 gallery until it has written stories.
 const PRESETS = [
   ['판타지', '국경 마을에서 사람들이 하나둘 사라지는 정통 판타지 모험', '어둡지만 희망이 남아 있게', 'fantasy'],
   ['코즈믹 호러', '1920년대 안개 낀 항구 도시, 바다에서 건져 올린 이상한 조각상과 연쇄 실종 사건', '진지하고 음산하게', 'horror'],
@@ -548,7 +549,9 @@ function renderAll() {
 const STEP_NAME = { rules: '룰 고르기', story: '이야기 정하기', seats: '자리 배치' };
 let step = 0;
 let setupRules = 'dw';
-let storyGenre = null; // genre of the premise when it came from a preset or the 🎲 (the builder's d20 cards follow it)
+let storyGenre = null; // genre of the premise when it came from a story or the 🎲 (the builder's d20 cards follow it)
+let storyPick = null; // story id, or 'gm' / 'random' / 'custom'
+let rolled = null; // the 🎲 story on screen
 const form = () => $('#setupForm');
 const ruleMeta = () => state?.rulesets?.[setupRules] || state?.rulesets?.d20;
 const role = () => new FormData(form()).get('userRole');
@@ -566,8 +569,6 @@ function openSetup() {
   $('#availNote').textContent = real.length
     ? `찾은 CLI: ${real.map((k) => names[k]).join(', ')}. 한 AI가 GM과 플레이어를 같이 맡아도 돼요(매번 따로 불려요).`
     : 'AI CLI를 찾지 못해서 데모봇만 쓸 수 있어요.';
-  $('#presets').innerHTML = '<button type="button" class="dice" data-random>🎲 무작위</button>'
-    + PRESETS.map(([l], i) => `<button type="button" data-preset="${i}">${l}</button>`).join('');
   form().userName.value = loadName() || form().userName.value;
   // A rule system marked hidden is left off this screen (its campaigns still run).
   const rs = Object.values(state?.rulesets || {}).filter((r) => !r.hidden);
@@ -578,6 +579,7 @@ function openSetup() {
     ${(r.intro || []).map((l, i) => `<span class="rd${i ? ' rd2' : ''}">${esc(l)}</span>`).join('')}
     ${r.signature ? `<span class="sig"><b>${esc(r.signature.name)}</b><span>${esc(r.signature.text)}</span></span>` : ''}</span></label>`).join('');
   step = 0;
+  storyPick = null;
   renderRuleLabels();
   updateRole();
   showStep();
@@ -590,6 +592,7 @@ function showStep() {
   step = Math.min(step, list.length - 1);
   const cur = list[step];
   $$('.step').forEach((s) => { s.hidden = s.dataset.step !== cur; });
+  if (cur === 'story') renderStories();
   $('#stepBar').innerHTML = list.map((_, i) => `<span class="${i <= step ? 'on' : ''}"></span>`).join('');
   $('#stepCount').textContent = `${step + 1} / ${list.length}`;
   $('#stepBack').hidden = step === 0;
@@ -601,7 +604,7 @@ function showStep() {
 function stepOk() {
   const cur = steps()[step];
   const f = new FormData(form());
-  if (cur === 'story' && role() === 'gm' && !String(f.get('premise') || '').trim()) { toast('직접 GM을 보니 어떤 이야기인지 한 줄 적어 주세요 (위 예시를 눌러도 돼요)'); $('#premise').focus(); return false; }
+  if (cur === 'story' && role() === 'gm' && !String(f.get('premise') || '').trim()) { toast('직접 GM을 보니 이야기를 하나 고르거나 전제를 적어 주세요'); $('#storyEdit').open = true; $('#premise').focus(); return false; }
   if (cur === 'seats' && role() !== 'player' && !$$('[data-player]').some((s) => s.value)) { toast('AI 플레이어를 한 명 이상 골라 주세요'); return false; }
   return true;
 }
@@ -619,7 +622,64 @@ function renderRuleLabels() {
 
 function updateRole() {
   $('#gmBox').hidden = role() === 'gm';
-  $('#storyNote').hidden = role() === 'gm';
+}
+
+// ---------------------------------------------------------------------------
+// Story gallery (Netflix style): the picked story large on top, poster tiles in rows below.
+// Picking fills the premise, tone, first scene and length the GM gets; "직접 고치기" edits them.
+
+function storiesFor(rules) {
+  if (STORIES[rules]) return STORIES[rules];
+  return PRESETS.map(([label, premise, tone, genre], i) => ({ id: `preset-${i}`, icon: '📖', row: 'genres', genre, title: label, kind: label,
+    synopsis: premise, premise, tone, length: 'short' })).filter((x) => RANDOM[x.genre]?.rules.includes(rules));
+}
+
+function renderStories() {
+  const list = storiesFor(setupRules);
+  if (!storyPick || (!STARTS.some((x) => x.id === storyPick) && !list.some((x) => x.id === storyPick))) {
+    pickStory(list.length ? any(list).id : 'gm');
+  }
+  const starts = STARTS.filter((x) => !(x.id === 'gm' && role() === 'gm'));
+  const rows = [['start', '시작 방식', starts], ...Object.entries({ ...STORY_ROWS, genres: '장르별 이야기' })
+    .map(([k, name]) => [k, name, list.filter((x) => x.row === k)]).filter(([, , xs]) => xs.length)];
+  $('#storyRows').innerHTML = rows.map(([k, name, xs]) => `<section class="srow"><h3 class="sub">${esc(name)}</h3><div class="stiles">${xs.map((x) => `<button type="button" class="stile r-${k}${x.id === storyPick ? ' on' : ''}" data-story="${x.id}" aria-pressed="${x.id === storyPick}">
+    <span class="si" aria-hidden="true">${x.icon}</span><span class="st">${esc(x.title)}</span></button>`).join('')}</div></section>`).join('');
+  renderHero();
+}
+
+function renderHero() {
+  const st = storiesFor(setupRules).find((x) => x.id === storyPick);
+  const start = STARTS.find((x) => x.id === storyPick);
+  const x = st || (storyPick === 'random' && rolled) || start;
+  const meta = st ? [st.kind, LENGTH[st.length], st.beginner ? '처음이라면 추천' : ''] : storyPick === 'random' ? ['즉석 조합', LENGTH.short] : [];
+  const synopsis = storyPick === 'random' ? rolled?.premise : x.synopsis;
+  $('#storyHero').innerHTML = `<div class="shart r-${st ? st.row : 'start'}" aria-hidden="true">${(st || start).icon}</div>
+    <div class="shtext"><div class="shtitle">${esc(st ? st.title : start.title)}</div>
+    ${meta.length ? `<div class="shmeta">${meta.filter(Boolean).map((m, i) => `<span class="${i === 2 ? 'brec' : ''}">${esc(m)}</span>`).join('')}</div>` : ''}
+    <p class="shsyn">${esc(synopsis || '')}</p>
+    ${st?.episode ? `<div class="shep"><b>1화 · ${esc(st.episode.title)}</b><span>${esc(st.episode.text)}</span></div>` : ''}
+    ${st?.tags ? `<div class="shtags">이 이야기는: ${st.tags.map(esc).join(' · ')}</div>` : ''}
+    ${storyPick === 'random' ? '<div class="bchips"><button type="button" class="bchip dice" data-reroll>🎲 다시 뽑기</button></div>' : ''}
+    ${storyPick === 'custom' ? '<p class="muted">아래 "직접 고치기"에 전제를 적어 주세요.</p>' : ''}</div>`;
+}
+
+function pickStory(id) {
+  storyPick = id;
+  const f = form();
+  const set = (o) => { f.premise.value = o.premise || ''; f.tone.value = o.tone || ''; f.opening.value = o.opening || ''; $('#storyLength').value = o.length ?? 'short'; $('#storyTitle').value = o.title || ''; };
+  const st = storiesFor(setupRules).find((x) => x.id === id);
+  if (st) {
+    set({ premise: st.premise, tone: st.tone, opening: st.episode?.text, length: st.length, title: st.episode ? st.title : '' });
+    storyGenre = st.genre;
+  } else if (id === 'random') {
+    rolled = randomStory(setupRules, f.premise.value);
+    set({ premise: rolled.premise, tone: rolled.tone, length: 'short' });
+    storyGenre = rolled.genre;
+  } else {
+    set({ length: '' });
+    storyGenre = null;
+    if (id === 'custom') { $('#storyLength').value = 'short'; $('#storyEdit').open = true; }
+  }
 }
 
 // A player's character is made in the character builder once the campaign starts.
@@ -629,6 +689,7 @@ function submitSetup() {
   saveName(String(f.get('userName') || '').trim());
   api('/api/campaign', {
     rules: f.get('rules'), premise: f.get('premise'), tone: f.get('tone'),
+    title: f.get('storyTitle'), opening: f.get('opening'), length: f.get('storyLength'),
     userName: f.get('userName'), userRole: role(), gm: f.get('gm'), players,
   });
   secretsOpen = false;
@@ -662,18 +723,19 @@ form().addEventListener('change', (e) => {
   if (e.target.name === 'userRole') { updateRole(); showStep(); }
   if (e.target.name === 'rules') renderRuleLabels();
 });
-$('#presets').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-preset], [data-random]');
+$('#storyRows').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-story]');
   if (!b) return;
-  const { premise, tone, genre } = b.dataset.preset
-    ? { premise: PRESETS[b.dataset.preset][1], tone: PRESETS[b.dataset.preset][2], genre: PRESETS[b.dataset.preset][3] }
-    : randomStory(setupRules, form().premise.value);
-  form().premise.value = premise;
-  form().tone.value = tone;
-  storyGenre = genre;
+  pickStory(b.dataset.story);
+  renderStories();
 });
-// A premise typed by hand has no known genre.
-$('#premise').addEventListener('input', () => { storyGenre = null; });
+$('#storyHero').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-reroll]')) return;
+  pickStory('random');
+  renderHero();
+});
+// A premise typed by hand has no known genre, and the story's title no longer fits it.
+$('#premise').addEventListener('input', () => { storyGenre = null; $('#storyTitle').value = ''; });
 
 $('#party').addEventListener('click', (e) => {
   const s = e.target.closest('[data-seat]');
