@@ -862,6 +862,8 @@ test('positions in the ledger: a defend from across the room goes back to the GM
     if (turns.length >= 2) return new Promise(() => {});
     turns.push(t);
     const retry = t.includes('서버가 받지 않은 판정');
+    // Stop the table once this roll goes out, before the next player's turn comes round.
+    if (retry) engine.setPaused(true);
     return { ok: true, text: JSON.stringify({ checks: [retry ? { who: 'p2', move: '위험 돌파', stat: '민첩성', why: '웅덩이 건너기' } : { who: 'p2', move: '방어', target: 'p1', why: '탄 지키기' }] }) };
   };
   c.round = 1;
@@ -896,4 +898,25 @@ test('a boss whose clock filled this turn may be cleared away in the same reply,
   assert.equal(engine.findFoe('용광로지기'), null, 'cleared away');
   assert.ok(!c.log.some((m) => m.to === 'gm' && (m.text || '').includes('치울 수 없다')));
   assert.ok(new Ledger(c.facts).list.some((f) => f.p === '상태' && f.args[0] === '용광로지기' && f.args[1] === '쓰러짐'));
+});
+
+test('the fallen sit out a huddle: only characters who can act plan the next move', async () => {
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '보스전', userRole: 'spectator', players: ['mock', 'mock', 'mock'] });
+  engine.setPaused(true);
+  await until(() => engine.busy.size === 0);
+  const c = engine.c;
+  c.characters.p1 = engine.makeCharacter({ name: '폭스', class: '전사' }, 'p1');
+  c.characters.p2 = engine.makeCharacter({ name: '노라', class: '사냥꾼' }, 'p2');
+  c.characters.p3 = engine.makeCharacter({ name: '아본', class: '마법사' }, 'p3');
+  c.characters.p2.conditions.push('사망');
+  c.prep = null;
+  c.order = ['p1', 'p2', 'p3'];
+  engine.talk().pending = [{ kind: 'scene' }];
+  engine.planHuddle();
+  assert.ok(c.huddle, 'a huddle opened');
+  assert.ok(!c.huddle.order.includes('p2'), 'the dead one is left out');
+  assert.deepEqual([...c.huddle.order].sort(), ['p1', 'p3']);
+  engine.endHuddle();
+  engine.setPaused(true);
 });

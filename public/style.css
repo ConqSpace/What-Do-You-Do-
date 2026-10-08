@@ -174,6 +174,10 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .seat.st-thinking .status { display: block; }
 .seat.st-thinking .status::after { content: '…'; }
 .seat .me-tag { font-weight: 600; }
+/* Out of the fight: greyed, and dead is plain to see. */
+.seat.st-down .avatar, .seat.st-dead .avatar { filter: grayscale(1); opacity: .55; }
+.seat.st-dead .name { text-decoration: line-through; color: var(--muted); }
+.sheetcard.fallen .ident .avatar { filter: grayscale(1); opacity: .55; }
 .bars { display: flex; flex-direction: column; gap: 2px; width: 46px; }
 .bar { display: block; height: 4px; border-radius: 4px; background: #3a3542; overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--good); transition: width .4s; }
@@ -241,6 +245,8 @@ body.chatter-off .chatter { display: none; }
 .system { text-align: center; font-size: 13px; color: var(--muted); white-space: pre-wrap; }
 .system.effect { color: color-mix(in srgb, var(--bad) 70%, var(--text)); }
 .system.clue { color: var(--accent); }
+.system.fall { color: color-mix(in srgb, var(--bad) 80%, var(--text)); font-weight: 600; }
+.system.rise { color: var(--good); font-weight: 600; }
 /* Whispers are asides: one quiet line. */
 .whisper {
   border-left: 2px dashed color-mix(in srgb, var(--san) 60%, var(--line));
@@ -646,6 +652,7 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
   .seat.st-thinking .name { display: block; }
   .seat:not(.st-thinking) .status { color: var(--muted); }
   .seat.st-done .status { color: var(--good); }
+  .seat.st-down .status, .seat.st-dead .status { color: var(--bad); }
   .log { padding: 18px 22px 8px; }
   .turnbar { margin: 0 22px; }
   .composer { padding: 8px 22px 16px; }

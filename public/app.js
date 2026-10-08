@@ -11,7 +11,7 @@ const $$ = (s) => [...document.querySelectorAll(s)];
 const OUTCOME = { critical: '대성공', success: '성공', failure: '실패', fumble: '대실패' };
 const OLD_TIER = { critical: 'crit', success: 'good', failure: 'bad', fumble: 'fumble' };
 const PHASE = { setup: '준비 전', prep: '캠페인 준비 중', declare: '선언', resolve: '판정 중', roll: '주사위 · 선택', 'gm-wait': 'GM 서술 대기', ended: '종료' };
-const STATUS = { thinking: '생각 중', talking: '말하는 중', done: '✓ 선언', waiting: '차례 대기', rolling: '굴릴 차례', choosing: '고르는 중', idle: '' };
+const STATUS = { thinking: '생각 중', talking: '말하는 중', done: '✓ 선언', waiting: '차례 대기', rolling: '굴릴 차례', choosing: '고르는 중', down: '쓰러짐', dead: '사망', idle: '' };
 const DICE = { d20: 'd20', dw: '2d6', coc7: 'd100' };
 // [label, premise, tone, genre (a key of RANDOM)]: the d20 gallery until it has written stories.
 const PRESETS = [
@@ -289,7 +289,8 @@ function msgHtml(m, fresh) {
         const [head, ...rest] = m.text.split('\n');
         return `<details class="msg system bonds"><summary>${esc(head)} <span class="muted">${rest.length}개</span></summary><div>${esc(rest.join('\n'))}</div></details>`;
       }
-      const cls = m.ledger ? ' ledger' : m.effect ? ' effect' : m.from === 'gm' ? ` intro${m.cont ? ' cont' : ''}` : m.clue ? ' clue' : '';
+      // Someone falling, coming to, or the whole party down: said louder than the rest.
+      const cls = m.ledger ? ' ledger' : m.down === 'up' ? ' rise' : m.down || m.wipe ? ' fall' : m.effect ? ' effect' : m.from === 'gm' ? ` intro${m.cont ? ' cont' : ''}` : m.clue ? ' clue' : '';
       return `<div class="msg system${cls}">${m.from === 'gm' && !m.effect && !m.ledger ? `<span class="rv">${esc(m.text)}</span>` : esc(m.text)}</div>`;
     }
   }
@@ -489,7 +490,7 @@ function sheetHtml(ch, full) {
   const sh = ch.sheet || { badges: [], stats: Object.entries(ch.stats || {}).map(([label, v]) => ({ label, value: sign(v) })), lists: [], tracks: [] };
   const tracks = tracksOf(ch);
   const lore = [['외모', ch.appearance], ['성격', ch.personality], ['배경', ch.background]].filter(([, v]) => v);
-  return `<section class="sheetcard${full ? ' plain' : ''}">
+  return `<section class="sheetcard${full ? ' plain' : ''}${ch.down ? ` fallen ${ch.down}` : ''}">
     <div class="ident">${avatar(ch.key)}<div><div class="nm">${esc(ch.name)}</div><div class="cp">${esc(ch.concept)} · ${esc(seatOf(ch.key)?.label || '')}</div></div></div>
     <div class="tracks">${tracks.map((t) => `<div class="track${t.kind ? ` ${t.kind}` : ''}"><span>${esc(t.label)}</span><b>${t.value}<small> / ${t.max}</small></b>${t.label === 'HP' ? bar(t) : ''}</div>`).join('')}</div>
     ${ch.conditions?.length ? `<div class="conds">${ch.conditions.map((x) => `<span>${esc(x)}</span>`).join('')}</div>` : ''}
@@ -634,7 +635,11 @@ function renderTurnbar() {
     if (thinking.length) parts.push(`${thinking.map(esc).join(', ')} 생각 중…`);
     // A huddle before the round's first declaration: the human may join with an OOC line.
     if (c.huddle) parts.push(c.userRole === 'player' ? '동료들이 작전 회의 중 · 잡담으로 끼어들 수 있어요' : '플레이어들이 작전 회의 중…');
-    if (state.phase === 'gm-wait') parts.push('GM(당신)의 서술을 기다려요. 보내면 다음 라운드가 시작돼요.');
+    if (state.phase === 'gm-wait') parts.push(c.wipe ? '일행이 모두 쓰러졌어요. 다음 서술로 이야기를 닫아 주세요.' : 'GM(당신)의 서술을 기다려요. 보내면 다음 라운드가 시작돼요.');
+    // A fallen character: the human stays at the table, watching and chatting.
+    const down = c.userRole === 'player' && chars().user?.down;
+    if (down === 'dead') parts.unshift(`☠ <b>${esc(charName('user'))}</b>은(는) 죽었어요. 테이블에 남아 지켜보고 잡담할 수 있어요.`);
+    else if (down) parts.unshift(`💤 <b>${esc(charName('user'))}</b>은(는) 쓰러져 있어요. 누가 치료해 주면 다시 차례가 와요.`);
     // The page is still revealing what came in: offer to catch up.
     const join = c.huddle && c.userRole === 'player' && mode !== 'ooc' ? '<button type="button" class="ghost" data-join>끼어들기</button>' : '';
     if (parts.length || behind) html = `<span class="grow">${parts.join(' · ')}</span>${join}${myTurn ? '<button type="button" class="ghost" data-pass>넘기기</button>' : ''}${skip}`;
@@ -650,7 +655,8 @@ function rollOf(rid) {
 function renderActionSheet() {
   const c = camp();
   const sheet = $('#actionSheet');
-  const choices = (c?.pendingChoices || []).filter((p) => p.who === 'user');
+  // Death's offer shows once the GM has named its price.
+  const choices = (c?.pendingChoices || []).filter((p) => p.who === 'user' && p.priced !== false);
   const checks = state?.phase === 'roll' ? c?.pendingChecks || [] : [];
   const key = c && !c.paused ? [...choices.map((p) => `c${p.id}`), ...checks.map((p) => `r${p.id}`)].join(',') : '';
   if (key === actionKey) { placeSheet(); return; }
@@ -700,14 +706,16 @@ function renderComposer() {
   $('#composer').hidden = !c;
   if (!c) return;
   const ic = role === 'gm' ? '서술' : '선언';
-  const modes = role === 'player' || role === 'gm' ? [['declare', ic], ['ooc', '잡담']] : [['ooc', '잡담']];
+  // A fallen character can't declare; the human can still talk at the table.
+  const fallen = role === 'player' && chars().user?.down;
+  const modes = (role === 'player' && !fallen) || role === 'gm' ? [['declare', ic], ['ooc', '잡담']] : [['ooc', '잡담']];
   // New table or new role: start on the in-character mode when there is one.
   if (role !== lastRole) { mode = modes[0][0]; lastRole = role; }
   if (!modes.some(([m]) => m === mode)) mode = modes[0][0];
   $('#modes').innerHTML = modes.map(([m, l]) => `<button type="button" data-mode="${m}" class="${m === mode ? 'on' : ''}" aria-pressed="${m === mode}" title="${modes.length > 1 ? '눌러서 선언/잡담 바꾸기' : ''}">${l}</button>`).join('');
   const dw = c.rules === 'dw';
   const gmPh = `장면 서술 · NPC: "대사" · ${c.rules === 'dw' ? '/check 아본 위험 돌파 민첩성' : c.rules === 'coc7' ? '/check 오필리아 관찰력 어려움' : '/check 카엘 민첩 15'}`;
-  $('#input').placeholder = mode === 'ooc' ? '테이블 잡담 (플레이어로서)' : role === 'gm' ? gmPh : '“대사” 행동은 그냥 쓰기';
+  $('#input').placeholder = fallen === 'dead' ? '잡담 (캐릭터는 죽었지만 자리는 그대로예요)' : mode === 'ooc' ? '테이블 잡담 (플레이어로서)' : role === 'gm' ? gmPh : '“대사” 행동은 그냥 쓰기';
   const moves = dw && role === 'player' && mode === 'declare' ? state.rulesets?.dw?.moves || [] : [];
   $('#moveChips').innerHTML = moves.map((m) => `<button type="button" data-move="${esc(m.name)}" data-tip-move="${esc(m.name)}">${esc(m.name)}</button>`).join('');
   $('#moveChips').hidden = !moves.length;
