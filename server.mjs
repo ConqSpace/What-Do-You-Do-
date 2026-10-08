@@ -66,7 +66,7 @@ const engine = new Engine({ backends, store, cfg, emit: broadcast });
 // ---------------------------------------------------------------------------
 // HTTP
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.png': 'image/png' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.png': 'image/png', '.webp': 'image/webp' };
 
 function sendJson(res, code, obj) {
   res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -114,10 +114,12 @@ async function handleApi(req, res, url) {
     case '/api/post': err = engine.userPost(body.mode, body.text); break;
     case '/api/pass': err = engine.userPass(); break;
     case '/api/roll': err = engine.userRollCheck(body.id); break;
+    case '/api/retract': err = engine.userRetract(); break;
     case '/api/choose': err = engine.userChoose(body.id, body.picks, body.text); break;
     case '/api/pause': engine.setPaused(!!body.paused); break;
     case '/api/pace': err = engine.setPace(body.pace); break;
     case '/api/chatter': err = engine.setChatter(body.level); break;
+    case '/api/gmstyle': err = engine.setGmStyle(body.style); break;
     case '/api/builder/draft': err = engine.builderSave(body.draft); break;
     case '/api/builder/roll': err = engine.builderRoll(body.name); break;
     case '/api/builder/finish': err = engine.builderFinish(body); break;

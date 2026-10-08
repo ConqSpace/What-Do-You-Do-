@@ -127,8 +127,13 @@ test('a teammate called by name hears the latest call on their own turn, until t
   const turn = declareTurn(c, 'p2');
   assert.ok(turn.includes('폭스이(가) 너를 불렀다: "내가 놈을 붙든다, 노라, 그 틈에 애를 빼!"'));
   assert.ok(!turn.includes('너를 불렀다: "노라, 뒤를 봐 줘."'));
+  // A name in the player's own words is no call: only what the character says out loud.
+  engine.post({ type: 'player', from: 'p3', parts: [{ k: 'talk', text: '노라 활 잘 쏘네 ㅋㅋ' }] });
+  assert.equal(calledOut(c, 'p2').from, 'p1');
+  engine.post({ type: 'player', from: 'p3', parts: [{ k: 'say', text: '노라, 왼쪽!' }, { k: 'act', text: '지팡이를 듭니다' }], toGm: true });
+  assert.equal(calledOut(c, 'p2').said, '노라, 왼쪽!');
   // Once 노라 has answered, it's behind her.
-  engine.post({ type: 'declare', from: 'p2', say: '알았어, 폭스!', action: '아이를 끌어낼게요' });
+  engine.post({ type: 'player', from: 'p2', parts: [{ k: 'say', text: '알았어, 폭스!' }, { k: 'act', text: '아이를 끌어냅니다' }], toGm: true });
   assert.equal(calledOut(c, 'p2'), null);
   assert.doesNotMatch(declareTurn(c, 'p2'), /너를 불렀다/);
   assert.equal(calledOut(c, 'p1').from, 'p2');
@@ -151,7 +156,8 @@ test('a 대실패 gets one line from another player, the roller may answer once,
   await until(() => !engine.sideBusy.size);
   const [r] = chats(c, 'react');
   assert.notEqual(r.from, 'p1', 'never the roller');
-  assert.equal(r.type, 'ooc');
+  assert.equal(r.type, 'player');
+  assert.deepEqual(r.parts.map((p) => p.k), ['talk'], 'a reaction is the player talking');
   const replies = chats(c, 'reply');
   assert.ok(replies.length <= 1);
   if (replies.length) assert.equal(replies[0].from, 'p1', 'only the roller answers back');
@@ -175,36 +181,36 @@ test('a reaction that comes back after the next declaration is dropped', async (
   setRng(() => 1);
   try { engine.rollCheck(check); } finally { setRng(null); }
   await until(() => release);
-  engine.post({ type: 'declare', from: 'p2', say: '', action: '앞장설게요' });
+  engine.post({ type: 'player', from: 'p2', parts: [{ k: 'act', text: '앞장섭니다' }], toGm: true });
   release();
   await until(() => !engine.sideBusy.size);
   assert.equal(chats(c, 'react').length, 0);
 });
 
-test('OOC never reaches the GM as fiction: banter stays out, other OOC is labeled, an older save\'s party talk is speech', async () => {
+test('table talk never reaches the GM as fiction: reactions stay out, a player\'s own words read as theirs, an older save\'s party talk is speech', async () => {
   const engine = table();
   freezeTurns(engine);
   engine.newCampaign({ rules: 'dw', premise: '테스트', userRole: 'player', players: ['mock', 'mock'], userChar: { name: '아린', class: '전사' } });
   await until(() => engine.c.phase === 'declare');
   const c = engine.c;
-  engine.post({ type: 'ooc', from: 'p1', text: '아니 뭐하냐고 진짜', chat: 'react' });
-  engine.post({ type: 'ooc', from: 'p2', text: '주사위 바꿔라', chat: 'reply' });
+  engine.post({ type: 'player', from: 'p1', parts: [{ k: 'talk', text: '아니 뭐하냐고 진짜' }], chat: 'react' });
+  engine.post({ type: 'player', from: 'p2', parts: [{ k: 'talk', text: '주사위 바꿔라' }], chat: 'reply' });
   engine.post({ type: 'talk', from: 'p2', text: '수문부터 열자, 사슬은 내가', chat: 'huddle' });
   engine.post({ type: 'ooc', from: 'p1', text: '이거 함정 냄새 나는데' });
   engine.userPost('ooc', '잠깐 화장실 다녀올게요');
   const gm = adjudicateTurn(c);
-  assert.ok(!gm.includes('아니 뭐하냐고') && !gm.includes('주사위 바꿔라'), 'reactions are banter, not for the GM');
+  assert.ok(!gm.includes('아니 뭐하냐고') && !gm.includes('주사위 바꿔라'), 'reactions are table banter, not for the GM');
   const line = (text) => gm.split('\n').find((l) => l.includes(text)) || '';
-  assert.match(line('수문부터 열자'), /동료들에게 한 말\] "/);
-  assert.match(line('이거 함정 냄새'), /테이블 잡담\(OOC\), 캐릭터가 한 말 아님\]/);
-  assert.match(line('화장실'), /테이블 잡담\(OOC\), 캐릭터가 한 말 아님\]/);
-  assert.match(gmBrief(c), /테이블 잡담\(OOC\)은 플레이어끼리 하는 말이다. 캐릭터는 못 듣고/);
+  assert.match(line('수문부터 열자'), /\] "수문부터 열자/, 'said out loud: speech');
+  assert.match(line('이거 함정 냄새'), /\] 이거 함정 냄새/, 'an old OOC line: the player\'s own words');
+  assert.match(line('화장실'), /\] 잠깐 화장실/);
+  assert.match(gmBrief(c), /나머지 글은 플레이어가 테이블에서 자기로서 하는 말\(캐릭터는 못 듣는다\)/);
+  assert.match(gmBrief(c), /NPC는 그 말을 듣지 못하고/);
   // The players hear all of it.
   const p2 = declareTurn(c, 'p2');
   assert.ok(p2.includes('아니 뭐하냐고') && p2.includes('수문부터 열자'));
-  assert.match(p2, /의 플레이어\) · 테이블 잡담\(OOC\)\] 이거 함정/);
   // Talk doesn't eat the story's window: forty lines of chatter still leave the scene in view.
-  for (let i = 0; i < 40; i++) engine.post({ type: 'ooc', from: 'p1', text: `잡담 ${i}`, chat: 'react' });
+  for (let i = 0; i < 40; i++) engine.post({ type: 'player', from: 'p1', parts: [{ k: 'talk', text: `ㅋㅋ ${i}` }], chat: 'react' });
   assert.ok(declareTurn(c, 'p2').includes('수문부터 열자'));
 });
 
@@ -229,7 +235,7 @@ test('the demo table talks: a whole campaign with reactions still reaches its en
   await until(() => engine.c.phase === 'ended', 15000);
   for (const m of chats(engine.c)) {
     assert.ok(['p1', 'p2', 'p3'].includes(m.from), 'only AI players talk on their own');
-    assert.equal(m.type, 'ooc');
+    assert.equal(m.type, 'player');
     assert.ok(['react', 'reply'].includes(m.chat));
   }
 });
@@ -241,7 +247,7 @@ test("the human's bold move gets a word from an AI player too", async () => {
   await until(() => engine.c.phase === 'declare' && engine.c.turn === 'user');
   const c = engine.c;
   c.characters.user.hp = 2;
-  assert.equal(engine.userPost('declare', '"비켜!" 혼자 정면으로 달려들게요'), null);
+  assert.equal(engine.userPost('declare', '"비켜!" @혼자 정면으로 달려듭니다'), null);
   await until(() => chats(c, 'react').length === 1);
   assert.ok(['p1', 'p2'].includes(chats(c, 'react')[0].from));
   assert.match(calls.filter((x) => x.kind === 'talk').at(-1).turn, /HP가 2\/\d+밖에 안 남았는데/);

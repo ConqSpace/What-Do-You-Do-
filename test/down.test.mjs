@@ -253,17 +253,18 @@ test("Death's bargain for the human: the buttons come once it is priced, taking 
   assert.equal(fact(c, '사건', ['아린의 사신 거래', '대가: 사신이 부르면 대답한다'])?.known, 'all');
   assert.ok(c.log.some((m) => m.type === 'narration' && m.text === '아린의 가슴이 다시 오르내립니다.'));
 
-  // Out cold: no declaring, but the seat stays at the table.
+  // Out cold: no acting, but the seat stays at the table and talks.
   assert.equal(engine.seatStatus('user'), 'down');
-  assert.match(engine.userPost('declare', '일어날게요'), /쓰러져/);
-  assert.equal(engine.userPost('ooc', '다들 힘내요'), null);
+  assert.match(engine.userPost('declare', '@일어납니다'), /쓰러져/);
+  assert.equal(engine.userPost('declare', '다들 힘내요'), null);
+  assert.ok(!c.log.at(-1).toGm, 'talk from the fallen is not for the GM');
 
-  // Dead: said plainly, and still welcome to chat.
+  // Dead: said plainly, and still welcome to talk.
   engine.applyFacts({ facts: { assert: ['사망(아린)'] } });
   assert.equal(engine.seatStatus('user'), 'dead');
   assert.equal(engine.view().characters.user.down, 'dead');
-  assert.match(engine.userPost('declare', '일어날게요'), /죽어서/);
-  assert.equal(engine.userPost('ooc', '저는 구경할게요'), null);
+  assert.match(engine.userPost('declare', '@일어납니다'), /죽어서/);
+  assert.equal(engine.userPost('declare', '저는 구경할게요'), null);
   engine.backends.chat = orig;
 });
 

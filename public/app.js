@@ -10,8 +10,8 @@ const $$ = (s) => [...document.querySelectorAll(s)];
 // Old d20 rolls (before rule modules) carried only `outcome`.
 const OUTCOME = { critical: '대성공', success: '성공', failure: '실패', fumble: '대실패' };
 const OLD_TIER = { critical: 'crit', success: 'good', failure: 'bad', fumble: 'fumble' };
-const PHASE = { setup: '준비 전', prep: '캠페인 준비 중', declare: '선언', resolve: '판정 중', roll: '주사위 · 선택', 'gm-wait': 'GM 서술 대기', ended: '종료' };
-const STATUS = { thinking: '생각 중', done: '✓ 선언', waiting: '차례 대기', rolling: '굴릴 차례', choosing: '고르는 중', down: '쓰러짐', dead: '사망', idle: '' };
+const PHASE = { setup: '준비 전', prep: '캠페인 준비 중', declare: '차례', resolve: '판정 중', roll: '주사위 · 선택', 'gm-wait': 'GM 서술 대기', ended: '종료' };
+const STATUS = { thinking: '생각 중', done: '✓ 했음', waiting: '차례 대기', rolling: '굴릴 차례', choosing: '고르는 중', down: '쓰러짐', dead: '사망', idle: '' };
 const DICE = { d20: 'd20', dw: '2d6', coc7: 'd100' };
 // [label, premise, tone, genre (a key of RANDOM)]: the d20 gallery until it has written stories.
 const PRESETS = [
@@ -81,8 +81,6 @@ const mobile = () => matchMedia('(max-width: 899px)').matches;
 
 let state = null;
 let log = [];
-let mode = 'declare';
-let lastRole = null;
 let secretsOpen = false;
 let sheetKey = null; // character shown on the sheet page
 let actionKey = ''; // what the action sheet currently shows (keeps selections across redraws)
@@ -90,10 +88,10 @@ let sheetMin = false; // phone: the sheet folded to one line
 // How fast new text is revealed (the header button cycles through).
 const PACE_LABEL = { slow: '느리게', normal: '보통', fast: '빠르게', off: '즉시' };
 const PACE_NEXT = { slow: 'normal', normal: 'fast', fast: 'off', off: 'slow' };
-// How much the AI players talk among themselves (reactions); the header button cycles.
-const CHATTER_LABEL = { normal: '잡담 보통', low: '잡담 적게', off: '잡담 끔' };
+// How often the AI players react to what happens at the table; the header button cycles.
+const CHATTER_LABEL = { normal: '리액션 보통', low: '리액션 적게', off: '리액션 끔' };
 const CHATTER_NEXT = { normal: 'low', low: 'off', off: 'normal' };
-const CHATTER_SHORT = { normal: '잡담', low: '잡담↓', off: '잡담✕' }; // a phone's header is narrow
+const CHATTER_SHORT = { normal: '리액션', low: '리액션↓', off: '리액션✕' }; // a phone's header is narrow
 const chars = () => state?.characters || {};
 const camp = () => state?.campaign;
 
@@ -173,7 +171,14 @@ function charName(key) {
   if (key === 'user' && !chars().user) return camp()?.userName || '방장';
   return chars()[key]?.name || seatOf(key)?.label || key;
 }
+// The AI GM's face follows its temper (깐깐하게 / 너그럽게); a human GM keeps the letters.
+const gmPortrait = (style) => `/img/gm-${style === 'easy' ? 'easy' : 'strict'}.webp`;
+const aiGm = () => !!seatOf('gm') && seatOf('gm').backend !== 'human';
+// The face, zoomed in from the half-length picture.
+const face = (style, cls = '') => `<span class="face${cls ? ` ${cls}` : ''}" style="background-image:url(${gmPortrait(style)})" aria-hidden="true"></span>`;
+
 function avatar(key) {
+  if (key === 'gm' && aiGm()) return face(camp()?.gmStyle, 'avatar gm');
   const label = key === 'gm' ? gmName().slice(0, 2) : (charName(key) || '?').slice(0, 1);
   return `<span class="avatar${key === 'gm' ? ' gm' : ''}" style="background:${colorOf(key)}" aria-hidden="true">${esc(label)}</span>`;
 }
@@ -221,6 +226,8 @@ function rollHtml(m, fresh) {
     : `${dice}<span class="muted">${sign(r.mod)} =</span><span class="total">${r.total}</span>${target ? `<span class="muted">${esc(target)}</span>` : ''}`;
   const name = info ? `<span class="tipped" tabindex="0" data-tip-move="${esc(r.move)}" data-tier="${tier}">${esc(title)}</span>` : esc(title);
   const lines = [];
+  // What the roll was for, as the GM said before it (success gets this, no more and no less).
+  if (r.stake) lines.push(`<div class="rolltext stake"><span class="muted">걸린 것</span> ${esc(r.stake)}</div>`);
   if (r.text && !info) lines.push(`<div class="rolltext">${esc(r.text)}${r.after ? ` <span class="muted">(${esc(r.after)})</span>` : ''}</div>`);
   if (r.diceNote) lines.push(`<div class="rolltext muted">${esc(r.diceNote)}</div>`);
   if (r.selfDamage) lines.push(`<div class="rolltext">받은 피해 <b>${r.selfDamage.total}</b></div>`);
@@ -228,7 +235,7 @@ function rollHtml(m, fresh) {
   if (r.pendingChoice) lines.push('<div class="rolltext muted">선택을 기다리는 중…</div>');
   if (r.chosen?.length) lines.push(`<div class="rolltext">✔ ${r.chosen.map(esc).join(' / ')}</div>`);
   if (r.notes?.length) lines.push(`<div class="rolltext muted">${r.notes.map(esc).join(' · ')}</div>`);
-  return `<div class="msg" data-id="${m.id}"><section class="roll tier-${r.house || tier}${r.who === 'user' ? ' mine' : ''}${fresh ? ' fresh' : ''}" aria-label="판정">
+  return `<div class="msg${m.of ? ' attached' : ''}${r.who === 'user' ? ' mine' : ''}" data-id="${m.id}"${m.of ? ` data-of="${m.of}"` : ''}><section class="roll tier-${r.house || tier}${r.who === 'user' ? ' mine' : ''}${fresh ? ' fresh' : ''}" aria-label="판정">
     <div class="rollhead"><span class="who"><b>${esc(charName(r.who))}</b> · ${name}</span><span class="rollnums">${nums}</span><span class="res">${esc(label)}</span></div>${lines.join('')}</section></div>`;
 }
 
@@ -241,6 +248,38 @@ function hiddenFromMe(m) {
   return camp()?.userRole === 'player' && m.to !== 'user';
 }
 
+// A player's message, old or new, as parts (see lib/post.mjs): talk, say, act.
+function partsOf(m) {
+  if (m.type === 'player') return m.parts || [];
+  if (m.type === 'declare') {
+    return [m.answer && { k: 'talk', text: m.answer, answer: true }, m.line && { k: 'talk', text: m.line },
+      m.say && { k: 'say', text: m.say }, m.action && { k: 'act', text: m.action }].filter(Boolean);
+  }
+  return m.type === 'ooc' ? [{ k: 'talk', text: m.text }] : [{ k: 'say', text: m.text }];
+}
+
+function moveTag(name) {
+  return moveInfo(name) ? `<span class="move tipped" tabindex="0" data-tip-move="${esc(name)}">${esc(name)}</span>` : `<span class="move">${esc(name)}</span>`;
+}
+
+// One bubble a message, whatever it mixes: the player's own words as plain text, the
+// character's "speech" in bold, the @action on a line of its own. Only a message the GM put to
+// a check wears the gold border, with the move it was rolled as (and the one the player named,
+// when the GM changed it); its roll card goes right under it.
+function postHtml(m) {
+  const me = m.from === 'user';
+  const label = me ? '나' : seatOf(m.from)?.label || '';
+  const who = me ? `${esc(charName(m.from))} · 나` : `<b>${esc(charName(m.from))}</b>${label ? ` · ${esc(label)}` : ''}`;
+  const ck = m.check;
+  const tag = ck ? `<div class="checktag">${ck.was ? `<s>${esc(ck.was)}</s><span class="muted">→</span>` : ''}${moveTag(ck.move)}</div>`
+    : m.move ? `<div class="named"><span class="muted">부른 액션</span> ${moveTag(m.move)}</div>` : '';
+  const body = partsOf(m).map((p) => (p.k === 'say' ? `<div class="say rv">${esc(p.text)}</div>`
+    : p.k === 'act' ? `<div class="act"><span class="at" aria-hidden="true">@</span><span class="rv">${esc(p.text)}</span></div>`
+      : `<div class="talk">${p.answer ? '<span class="muted">답</span> ' : ''}<span class="rv">${esc(p.text)}</span></div>`)).join('');
+  return `<div class="msg post${me ? ' me' : ''}${ck ? ' checked' : ''}${m.chat ? ' chatter' : ''}" data-id="${m.id}">${avatar(m.from)}<div class="bubble">
+    <div class="who">${who}</div>${tag}${body}</div></div>`;
+}
+
 function msgHtml(m, fresh) {
   if (hiddenFromMe(m)) return '';
   switch (m.type) {
@@ -248,7 +287,7 @@ function msgHtml(m, fresh) {
       return `<div class="msg whisper"><span class="tag">귓속말 → ${esc(m.to === 'user' ? '나' : charName(m.to))}</span> ${esc(m.text)}</div>`;
     case 'narration':
       if (m.cont) return `<article class="msg narration cont"><span class="rv">${esc(m.text)}</span></article>`;
-      return `<article class="msg narration"><span class="tag">${esc(gmName())}${seatOf('gm') ? ` · ${esc(seatOf('gm').label)}` : ''}</span><span class="rv">${esc(m.text)}</span></article>`;
+      return `<article class="msg narration"><span class="tag">${aiGm() ? `${face(camp()?.gmStyle)}` : ''}${esc(gmName())}${seatOf('gm') ? ` · ${esc(seatOf('gm').label)}` : ''}</span><span class="rv">${esc(m.text)}</span></article>`;
     // An NPC's line, voiced by the GM but heard from the NPC.
     case 'npc':
       return `<div class="msg npc"><span class="avatar npc" style="background:${npcColor(m.name)}" aria-hidden="true">${esc((m.name || '?').slice(0, 1))}</span><div class="bubble">
@@ -260,25 +299,9 @@ function msgHtml(m, fresh) {
       // (and kept in the scene tab).
       return `<div class="msg scene" title="${esc(rest.join(' — '))}">${esc(title)}</div>`;
     }
-    case 'declare': {
-      const me = m.from === 'user';
-      const who = me ? `${esc(charName(m.from))} · 나` : `<b>${esc(charName(m.from))}</b> · ${esc(seatOf(m.from)?.label || '')}`;
-      const move = m.move ? (moveInfo(m.move) ? `<span class="move tipped" tabindex="0" data-tip-move="${esc(m.move)}">${esc(m.move)}</span>` : `<span class="move">${esc(m.move)}</span>`) : '';
-      return `<div class="msg declare${me ? ' me' : ''}">${avatar(m.from)}<div class="bubble">
-        <div class="who">${who}</div>
-        ${move}${m.answer ? `<div class="ans"><span class="muted">답</span> <span class="rv">${esc(m.answer)}</span></div>` : ''}${m.line ? `<div class="line rv">${esc(m.line)}</div>` : ''}${m.say ? `<div class="say rv">${esc(m.say)}</div>` : ''}
-        ${m.action ? `<div class="act rv">${esc(m.action)}</div>` : ''}
-      </div></div>`;
-    }
-    // Table talk: quiet chat lines, apart from the declarations' bubbles. OOC is the player
-    // (the AI's name, its character in brackets); a `talk` line (older saves) is the character.
-    case 'ooc': {
-      const who = m.from === 'user' ? esc(camp()?.userName || '나')
-        : `${esc(seatOf(m.from)?.label || m.from)}${chars()[m.from] ? `<span class="of">(${esc(charName(m.from))})</span>` : ''}`;
-      return `<div class="msg ooc${m.chat ? ' chatter' : ''}"><b>${who}</b> <span class="rv">${esc(m.text)}</span></div>`;
-    }
-    case 'talk':
-      return `<div class="msg talk chatter"><b style="color:${colorOf(m.from)}">${esc(charName(m.from))}</b> <span class="say rv">${esc(m.text)}</span></div>`;
+    // A player's message; older saves' declarations, OOC lines and party talk look the same.
+    case 'player': case 'declare': case 'ooc': case 'talk':
+      return postHtml(m);
     case 'roll':
       return rollHtml(m, fresh);
     default: {
@@ -296,15 +319,38 @@ function msgHtml(m, fresh) {
   }
 }
 
+// Where a roll card goes: right under the message it answers (after any card already there).
+function attachPoint(box, of) {
+  let el = box.querySelector(`[data-id="${of}"]`);
+  if (!el) return null;
+  while (el.nextElementSibling?.dataset.of === String(of)) el = el.nextElementSibling;
+  return el;
+}
+
 function appendMsg(m, fresh) {
   const box = $('#log');
   const near = box.scrollHeight - box.scrollTop - box.clientHeight < 160;
   box.querySelector('.empty')?.remove();
   const html = msgHtml(m, fresh);
   if (!html) return null;
-  box.insertAdjacentHTML('beforeend', html);
+  const at = m.of && attachPoint(box, m.of);
+  if (at) at.insertAdjacentHTML('afterend', html);
+  else box.insertAdjacentHTML('beforeend', html);
   if (near || m.from === 'user') box.scrollTop = box.scrollHeight;
-  return box.lastElementChild;
+  return at ? at.nextElementSibling : box.lastElementChild;
+}
+
+// The log in reading order: each roll card right after the message it answers.
+function readingOrder(list) {
+  const ids = new Set(list.map((m) => m.id));
+  const under = new Map();
+  for (const m of list) if (m.of && ids.has(m.of)) under.set(m.of, [...(under.get(m.of) || []), m]);
+  const out = [];
+  for (const m of list) {
+    if (m.of && ids.has(m.of)) continue;
+    out.push(m, ...(under.get(m.id) || []));
+  }
+  return out;
 }
 
 // New messages are shown one after another: each waits until the text before it has been
@@ -412,7 +458,7 @@ function renderLog() {
     $('#emptyNew').onclick = openSetup;
     return;
   }
-  box.innerHTML = log.map((m) => msgHtml(m, false)).join('');
+  box.innerHTML = readingOrder(log).map((m) => msgHtml(m, false)).join('');
   box.scrollTop = box.scrollHeight;
 }
 
@@ -483,8 +529,16 @@ function renderStory() {
     ${c.foes?.length ? `<h3>적</h3>${c.foes.map((f) => `<div class="foe"><div><b>${esc(f.name)}</b>${f.boss ? ` <span class="bossbadge">보스${f.down ? ' · 쓰러짐' : ''}</span>` : ''} <span class="muted">${[f.armor ? `갑옷 ${f.armor}` : '', f.damage ? `피해 ${esc(f.damage)}` : '', f.attack ? `공격 ${f.attack}` : '', f.dodge ? `회피 ${f.dodge}` : ''].filter(Boolean).join(' · ')}</span></div>
       ${f.boss ? (f.note ? `<div class="muted">${esc(f.note)}</div>` : '') : `${bar({ value: f.hp, max: f.maxHp })}<div class="muted">HP ${f.hp} / ${f.maxHp}${f.note ? ` · ${esc(f.note)}` : ''}</div>`}</div>`).join('')}` : ''}
     ${c.summary ? `<h3>지금까지의 이야기</h3><div class="pre">${esc(c.summary)}</div>` : ''}
-    <h3>진행</h3><p>라운드 ${c.round}</p>`;
+    <h3>진행</h3><p>라운드 ${c.round}</p>
+    ${c.userRole !== 'gm' ? `<h3>마스터 성향</h3><div class="seg stylepick" role="radiogroup" aria-label="마스터 성향">${Object.entries(GM_STYLE).map(([k, [label]]) => `<button type="button" data-gmstyle="${k}" role="radio" aria-checked="${(c.gmStyle || 'strict') === k}" class="${(c.gmStyle || 'strict') === k ? 'on' : ''}">${face(k)}${label}</button>`).join('')}</div>
+    <p class="muted">${esc(GM_STYLE[c.gmStyle || 'strict'][1])}</p>` : ''}`;
 }
+
+// The AI GM's temper (lib/prompts.mjs GM_STYLES): the label and what it means at the table.
+const GM_STYLE = {
+  strict: ['깐깐하게', '허구를 꼼꼼히 따져요. 액션을 바꾸거나 판정을 줄이면 굴리기 전에 물어봐요.'],
+  easy: ['너그럽게', '웬만하면 하게 해 줘요. 말한 걸 통째로 한 판정에 걸고, 묻지 않고 바로 굴려요.'],
+};
 
 function sheetHtml(ch, full) {
   const sh = ch.sheet || { badges: [], stats: Object.entries(ch.stats || {}).map(([label, v]) => ({ label, value: sign(v) })), lists: [], tracks: [] };
@@ -597,8 +651,8 @@ function renderHeader() {
   const chat = $('#chatterBtn');
   chat.hidden = !c;
   chat.textContent = (mobile() ? CHATTER_SHORT : CHATTER_LABEL)[c?.chatter || 'normal'];
-  chat.title = 'AI 플레이어끼리 주고받는 잡담: 보통 · 적게 · 끔 (누르면 바뀜)';
-  // Off: the AI players' talk already in the log is folded away too.
+  chat.title = 'AI 플레이어가 테이블에서 벌어진 일에 반응하는 정도: 보통 · 적게 · 끔 (누르면 바뀜)';
+  // Off: the AI players' reactions already in the log are folded away too.
   document.body.classList.toggle('chatter-off', c?.chatter === 'off');
   const pb = $('#pauseBtn');
   pb.hidden = !c || state.phase === 'ended';
@@ -631,12 +685,12 @@ function renderTurnbar() {
     const myTurn = state.phase === 'declare' && seatOf('user')?.status === 'waiting';
     const parts = [];
     if (myTurn && !thinking.length) parts.push(`<b>${esc(charName('user'))}</b>, 어떻게 하시겠습니까?`);
-    else if (myTurn) parts.push('먼저 선언해도 돼요');
+    else if (myTurn) parts.push('먼저 써도 돼요');
     if (thinking.length) parts.push(`${thinking.map(esc).join(', ')} 생각 중…`);
     if (state.phase === 'gm-wait') parts.push(c.wipe ? '일행이 모두 쓰러졌어요. 다음 서술로 이야기를 닫아 주세요.' : 'GM(당신)의 서술을 기다려요. 보내면 다음 라운드가 시작돼요.');
-    // A fallen character: the human stays at the table, watching and chatting.
+    // A fallen character: the human stays at the table, watching and talking.
     const down = c.userRole === 'player' && chars().user?.down;
-    if (down === 'dead') parts.unshift(`☠ <b>${esc(charName('user'))}</b>은(는) 죽었어요. 테이블에 남아 지켜보고 잡담할 수 있어요.`);
+    if (down === 'dead') parts.unshift(`☠ <b>${esc(charName('user'))}</b>은(는) 죽었어요. 테이블에 남아 지켜보며 말은 할 수 있어요.`);
     else if (down) parts.unshift(`💤 <b>${esc(charName('user'))}</b>은(는) 쓰러져 있어요. 누가 치료해 주면 다시 차례가 와요.`);
     // The page is still revealing what came in: offer to catch up.
     if (parts.length || behind) html = `<span class="grow">${parts.join(' · ')}</span>${myTurn ? '<button type="button" class="ghost" data-pass>넘기기</button>' : ''}${skip}`;
@@ -680,10 +734,10 @@ function renderActionSheet() {
     const dice = DICE[c.rules] || '주사위';
     sheet.innerHTML = checks.map((p) => `<div>
       <h3>판정 차례예요</h3>
-      ${p.why ? `<p class="lead">${esc(p.why)}</p>` : ''}
+      ${p.stake ? `<p class="lead"><span class="muted">걸린 것</span> ${esc(p.stake)}</p>` : p.why ? `<p class="lead">${esc(p.why)}</p>` : ''}
       <div class="chips meta"><span>${esc(p.label || p.move || p.skill || p.stat || '')}</span>${p.difficulty && p.difficulty !== 'regular' ? `<span>${p.difficulty === 'hard' ? '어려움' : '극단'}</span>` : ''}${p.bonus ? `<span>보너스 ${p.bonus}</span>` : ''}${p.penalty ? `<span>페널티 ${p.penalty}</span>` : ''}${p.push_risk ? `<span>밀어붙였다 실패하면: ${esc(p.push_risk)}</span>` : ''}</div>
       <button type="button" class="rollcta" data-roll="${p.id}" style="width:100%">${dice} 굴리기</button>
-    </div>`).join('');
+    </div>`).join('') + (state.campaign.turn === 'user' ? '<button type="button" class="ghost retract" data-retract style="width:100%">다르게 할래요</button>' : '');
   }
   sheet.insertAdjacentHTML('afterbegin', `<div class="minline">${choices.length ? '고를 차례예요' : '판정 차례예요'} · 탭해서 열기</div>`);
   sheet.hidden = false;
@@ -702,18 +756,15 @@ function renderComposer() {
   const role = c?.userRole;
   $('#composer').hidden = !c;
   if (!c) return;
-  const ic = role === 'gm' ? '서술' : '선언';
-  // A fallen character can't declare; the human can still talk at the table.
+  // One input: the player's own words, "speech" and @action in any mix (lib/post.mjs). A fallen
+  // character can't act; the human can still talk at the table.
   const fallen = role === 'player' && chars().user?.down;
-  const modes = (role === 'player' && !fallen) || role === 'gm' ? [['declare', ic], ['ooc', '잡담']] : [['ooc', '잡담']];
-  // New table or new role: start on the in-character mode when there is one.
-  if (role !== lastRole) { mode = modes[0][0]; lastRole = role; }
-  if (!modes.some(([m]) => m === mode)) mode = modes[0][0];
-  $('#modes').innerHTML = modes.map(([m, l]) => `<button type="button" data-mode="${m}" class="${m === mode ? 'on' : ''}" aria-pressed="${m === mode}" title="${modes.length > 1 ? '눌러서 선언/잡담 바꾸기' : ''}">${l}</button>`).join('');
+  const acts = role === 'player' && !fallen;
   const dw = c.rules === 'dw';
   const gmPh = `장면 서술 · NPC: "대사" · ${c.rules === 'dw' ? '/check 아본 위험 돌파 민첩성' : c.rules === 'coc7' ? '/check 오필리아 관찰력 어려움' : '/check 카엘 민첩 15'}`;
-  $('#input').placeholder = fallen === 'dead' ? '잡담 (캐릭터는 죽었지만 자리는 그대로예요)' : mode === 'ooc' ? '테이블 잡담 (플레이어로서)' : role === 'gm' ? gmPh : '“대사” 행동은 그냥 쓰기';
-  const moves = dw && role === 'player' && mode === 'declare' ? state.rulesets?.dw?.moves || [] : [];
+  $('#input').placeholder = role === 'gm' ? gmPh : role !== 'player' ? '테이블에 한마디' : fallen ? `말은 할 수 있어요 (${fallen === 'dead' ? '죽어서' : '쓰러져서'} 행동은 못 해요)` : '말하듯 쓰기 · “대사” · @행동';
+  $('#atBtn').hidden = !acts;
+  const moves = dw && acts ? state.rulesets?.dw?.moves || [] : [];
   $('#moveChips').innerHTML = moves.map((m) => `<button type="button" data-move="${esc(m.name)}" data-tip-move="${esc(m.name)}">${esc(m.name)}</button>`).join('');
   $('#moveChips').hidden = !moves.length;
 }
@@ -826,6 +877,7 @@ function renderHouseRules() {
 
 function updateRole() {
   $('#gmBox').hidden = role() === 'gm';
+  $('#styleBox').hidden = role() === 'gm'; // a human GM has their own temper
 }
 
 // ---------------------------------------------------------------------------
@@ -900,6 +952,7 @@ function submitSetup() {
     title: f.get('storyTitle'), opening: f.get('opening'), length: f.get('storyLength'), gmOnly: f.get('gmOnly'), ...storyExtra,
     userName: f.get('userName'), userRole: role(), gm: f.get('gm'), players,
     house: Object.fromEntries((ruleMeta()?.houseRules || []).map((h) => [h.id, f.get(`house_${h.id}`) === 'on'])),
+    gmStyle: f.get('gmStyle') || 'strict',
   });
   secretsOpen = false;
   log = [];
@@ -954,6 +1007,10 @@ $('#party').addEventListener('click', (e) => {
   if (s.dataset.seat === 'gm') openDrawer('scene');
   else openSheet(s.dataset.seat);
 });
+$('#tab-scene').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-gmstyle]');
+  if (b) api('/api/gmstyle', { style: b.dataset.gmstyle });
+});
 $('#tabs').addEventListener('click', (e) => {
   const b = e.target.closest('[data-tab]');
   if (b) selectTab(b.dataset.tab);
@@ -972,6 +1029,9 @@ $('#actionSheet').addEventListener('click', (e) => {
   if (sheetMin && mobile()) { sheetMin = false; placeSheet(); return; }
   const roll = e.target.closest('[data-roll]');
   if (roll) { roll.disabled = true; api('/api/roll', { id: roll.dataset.roll }); return; }
+  // Seen what's at stake and changed their mind: the roll is taken back, the turn stays theirs.
+  const back = e.target.closest('[data-retract]');
+  if (back) { back.disabled = true; api('/api/retract'); return; }
   const opt = e.target.closest('.opt');
   if (opt) {
     const box = opt.closest('[data-choice]');
@@ -998,14 +1058,14 @@ $('#actionSheet').addEventListener('click', (e) => {
   }
 });
 
-$('#modes').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-mode]');
-  if (!b) return;
-  const all = $$('#modes [data-mode]').map((x) => x.dataset.mode);
-  // The single visible button on a phone flips between modes.
-  mode = b.dataset.mode === mode && all.length > 1 ? all[(all.indexOf(mode) + 1) % all.length] : b.dataset.mode;
-  renderComposer();
-  $('#input').focus();
+// "@" starts an action line (a phone keyboard hides @ a layer down).
+$('#atBtn').addEventListener('click', () => {
+  const input = $('#input');
+  const v = input.value.replace(/[ \t]+$/, '');
+  if (!/(^|\n)[@＠][^\n]*$/.test(v)) input.value = `${v}${v && !v.endsWith('\n') ? '\n' : ''}@`;
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  autosize();
 });
 $('#moveChips').addEventListener('click', (e) => {
   const b = e.target.closest('[data-move]');
@@ -1025,7 +1085,7 @@ $('#composer').addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = $('#input').value.trim();
   if (!text) return;
-  const r = await api('/api/post', { mode, text });
+  const r = await api('/api/post', { text });
   if (r.ok) { $('#input').value = ''; autosize(); }
 });
 $('#input').addEventListener('keydown', (e) => {
