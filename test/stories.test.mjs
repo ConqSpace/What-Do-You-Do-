@@ -21,10 +21,10 @@ test('gallery stories: the Netflix shape, filled in for the GM', () => {
       assert.ok(LENGTH[s.length], `${s.id}: length ${s.length}`);
       const n = sentences(s.synopsis).length;
       assert.ok(n >= 3 && n <= 5 && s.synopsis.length <= 170, `${s.id}: synopsis is 3-5 short sentences (${n}, ${s.synopsis.length} chars)`);
-      assert.ok(s.episode?.title && s.episode.text.length <= 100, `${s.id}: first episode`);
+      assert.ok(s.scene?.title && s.scene.text.length <= 100, `${s.id}: first scene`);
       assert.equal(s.tags.length, 4, `${s.id}: four tags`);
       assert.ok(s.premise && s.tone, `${s.id}: what the GM gets`);
-      for (const t of [s.synopsis, s.episode.text, s.premise]) {
+      for (const t of [s.synopsis, s.scene.text, s.premise]) {
         for (const w of STIFF) assert.ok(!t.includes(w), `${s.id}: "${w}"`);
       }
     }

@@ -55,17 +55,17 @@ Three drafts of the same story, and what was wrong with each.
 
 1. Card copy, "~습니다": "국경 마을에서 밤마다 종이 울리고, 한 사람씩 사라집니다. 영주는 입을 닫았고, 마을 사람들은 당신들만 바라봅니다." Reads like an announcement; "당신들" is translated English.
 2. Grand present tense: "국경 마을에 밤마다 종이 울리고, 날이 밝으면 누군가 사라진다. 영주는 입을 닫았고, 모험가들은 종탑에 오른다." Still a speech: it paints a scene but never says why they go in, what turns, or what is at stake. "입을 닫았고" is a stock literary phrase.
-3. The title page (current):
+3. The title page (current). The first line now names the bell, so "종탑에 오르기 전에" doesn't come out of nowhere; the first scene was labeled "1화" until we noticed the game has no episodes:
 
 ```
 잿빛 종탑의 비밀
 판타지 · 짧은 모험 · 처음이라면 추천
 
-밤마다 사람이 하나씩 사라지는 국경 마을. 모험가들이 그 이유를 찾아 마을에 들어선다.
+밤마다 종이 울리고, 다음 날이면 누군가 사라지는 국경 마을. 모험가들이 그 까닭을 알아보러 마을에 온다.
 하지만 영주는 아무것도 말해 주지 않고, 주민들은 뭔가 숨기는 눈치다.
 종탑에 오르기 전에, 누구를 믿을지 정해야 한다.
 
-1화 · 주인 없는 신발
+첫 장면 · 주인 없는 신발
 첫날 밤, 종이 울린다. 아침이 되자 종탑 아래 남은 건 작은 신발 한 짝. 신발 주인은 어디로 갔을까.
 
 이 이야기는: 으스스한 · 수수께끼 · 조사 · 대화

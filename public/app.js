@@ -626,6 +626,7 @@ function updateRole() {
 
 // ---------------------------------------------------------------------------
 // Story gallery (Netflix style): the picked story large on top, poster tiles in rows below.
+// Its first scene is where the GM starts (there are no episodes, so it isn't called 1화).
 // Picking fills the premise, tone, first scene and length the GM gets; "직접 고치기" edits them.
 
 function storiesFor(rules) {
@@ -657,7 +658,7 @@ function renderHero() {
     <div class="shtext"><div class="shtitle">${esc(st ? st.title : start.title)}</div>
     ${meta.length ? `<div class="shmeta">${meta.filter(Boolean).map((m, i) => `<span class="${i === 2 ? 'brec' : ''}">${esc(m)}</span>`).join('')}</div>` : ''}
     <p class="shsyn">${esc(synopsis || '')}</p>
-    ${st?.episode ? `<div class="shep"><b>1화 · ${esc(st.episode.title)}</b><span>${esc(st.episode.text)}</span></div>` : ''}
+    ${st?.scene ? `<div class="shep"><b>첫 장면 · ${esc(st.scene.title)}</b><span>${esc(st.scene.text)}</span></div>` : ''}
     ${st?.tags ? `<div class="shtags">이 이야기는: ${st.tags.map(esc).join(' · ')}</div>` : ''}
     ${storyPick === 'random' ? '<div class="bchips"><button type="button" class="bchip dice" data-reroll>🎲 다시 뽑기</button></div>' : ''}
     ${storyPick === 'custom' ? '<p class="muted">아래 "직접 고치기"에 전제를 적어 주세요.</p>' : ''}</div>`;
@@ -669,7 +670,7 @@ function pickStory(id) {
   const set = (o) => { f.premise.value = o.premise || ''; f.tone.value = o.tone || ''; f.opening.value = o.opening || ''; $('#storyLength').value = o.length ?? 'short'; $('#storyTitle').value = o.title || ''; };
   const st = storiesFor(setupRules).find((x) => x.id === id);
   if (st) {
-    set({ premise: st.premise, tone: st.tone, opening: st.episode?.text, length: st.length, title: st.episode ? st.title : '' });
+    set({ premise: st.premise, tone: st.tone, opening: st.scene?.text, length: st.length, title: st.scene ? st.title : '' });
     storyGenre = st.genre;
   } else if (id === 'random') {
     rolled = randomStory(setupRules, f.premise.value);
