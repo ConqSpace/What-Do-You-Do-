@@ -24,6 +24,17 @@ async function until(fn, ms = 5000) {
     await new Promise((r) => setTimeout(r, 5));
   }
 }
+// The demo bot answers at once, so a moment that passes (a round's "acted" marks) can come
+// and go between two polls of until(). Stop the table the moment it gets there instead.
+async function stopAt(engine, when) {
+  if (engine.c && when(engine.c)) { engine.c.paused = true; return; }
+  const changed = engine.changed;
+  engine.changed = function () {
+    if (this.c && when(this.c)) { this.c.paused = true; delete this.changed; }
+    return changed.call(this);
+  };
+  await until(() => engine.c?.paused && when(engine.c));
+}
 const kinds = (text) => parsePost(text).parts.map((p) => `${p.k}:${p.text}`);
 
 test('a message reads like a table log: own words, "speech", @action, in the order written', () => {
@@ -98,8 +109,7 @@ test("the human's turn: a question gets a short answer and the turn stays; bante
   engine.userRollCheck(c.pendingChecks[0].id);
   const roll = c.log.findLast((m) => m.type === 'roll');
   assert.equal(roll.of, c.log.findLast((m) => m.type === 'player' && m.from === 'user').id, 'the roll goes under what they said last');
-  await until(() => c.acted.user);
-  engine.setPaused(true);
+  await stopAt(engine, (c) => c.acted.user);
   await until(() => engine.busy.size === 0);
 
   // Off their turn, talk is just said; an @action waits for the next round.

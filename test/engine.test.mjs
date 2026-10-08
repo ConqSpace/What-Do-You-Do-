@@ -29,6 +29,36 @@ async function until(fn, ms = 5000) {
   }
 }
 
+// The demo bot answers at once, so the table can play whole rounds between two polls of
+// until() and move on, or end, before one of them sees the moment a test waits for (it did,
+// on a busy machine). Stop the table the moment it gets there instead.
+async function stopAt(engine, when) {
+  if (engine.c && when(engine.c)) { engine.c.paused = true; return; }
+  const changed = engine.changed;
+  engine.changed = function () {
+    if (this.c && when(this.c)) { this.c.paused = true; delete this.changed; }
+    return changed.call(this);
+  };
+  await until(() => engine.c?.paused && when(engine.c));
+}
+const atDeclare = (engine) => stopAt(engine, (c) => c.phase === 'declare');
+
+// The demo GM asks for a roll on some declarations only, and now and then a demo campaign
+// finds both clues and ends before it has asked once. A test that counts on a roll has the
+// GM's first ruling ask for one (the demo's own check for the rules in play).
+function rollOnFirstRuling(engine) {
+  const orig = engine.backends.chat.bind(engine.backends);
+  let done = false;
+  engine.backends.chat = async (seat, kind, brief, turn, ctx) => {
+    if (kind !== 'adjudicate' || done) return orig(seat, kind, brief, turn, ctx);
+    for (let i = 0; i < 50; i++) {
+      const r = await orig(seat, kind, brief, turn, ctx);
+      if (!r.ok || JSON.parse(r.text).checks?.length) { done = true; return r; }
+    }
+    return orig(seat, kind, brief, turn, ctx);
+  };
+}
+
 test('spectator campaign runs from prep to the ending', async () => {
   const { engine } = table();
   engine.newCampaign({ premise: '테스트 모험', userRole: 'spectator', players: ['mock', 'mock', 'mock'] });
@@ -88,7 +118,7 @@ test('human player: GM waits for the declaration and the human rolls their own c
   assert.equal(pending.who, 'user');
   engine.backends.chat = orig;
   assert.equal(engine.userRollCheck(pending.id), null);
-  await until(() => engine.c.round === 2 && engine.c.phase === 'declare');
+  await stopAt(engine, (c) => c.round === 2 && c.phase === 'declare');
   const roll = engine.c.log.find((m) => m.type === 'roll' && m.from === 'user');
   assert.equal(roll.roll.stat, '민첩');
   assert.equal(roll.roll.mod, engine.c.characters.user.stats.민첩);
@@ -119,13 +149,14 @@ test('GM failure pauses the table and resume retries', async () => {
   await until(() => engine.c.paused && engine.c.error);
   fail = false;
   engine.setPaused(false);
-  await until(() => engine.c.phase === 'declare');
+  await atDeclare(engine);
   assert.equal(engine.c.error, null);
   engine.setPaused(true);
 });
 
 test('dungeon world: spectator campaign with bonds, foes and moves runs to the end', async () => {
   const { engine } = table();
+  rollOnFirstRuling(engine);
   engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock', 'mock', 'mock'] });
   await until(() => engine.c.phase === 'ended', 10000);
   const c = engine.c;
@@ -166,7 +197,7 @@ test('dungeon world: the human picks 7-9 options, damage moves hit foes, 0 HP ro
   assert.match(engine.userChoose(choice.id, [0, 1]), /정확히 1개/);
   assert.equal(engine.userChoose(choice.id, [2]), null);
   setRng(null);
-  await until(() => c.round === 2 && c.phase === 'declare');
+  await stopAt(engine, (c) => c.round === 2 && c.phase === 'declare');
   assert.ok(c.log.some((m) => m.choice && m.text.includes('무엇을 주의해야 하나?')));
 
   setRng(scripted([1, 1]));
@@ -181,6 +212,7 @@ test('dungeon world: the human picks 7-9 options, damage moves hit foes, 0 HP ro
 
 test('call of cthulhu: spectator campaign with combat, sanity and clues runs to the end', async () => {
   const { engine } = table();
+  rollOnFirstRuling(engine);
   engine.newCampaign({ rules: 'coc7', premise: '항구 도시 실종 사건', userRole: 'spectator', players: ['mock', 'mock'] });
   await until(() => engine.c.phase === 'ended', 10000);
   const c = engine.c;
@@ -227,7 +259,7 @@ test('call of cthulhu: the human pushes a failed roll with a reason', async () =
 test('fact ledger: secrets and other players\' whispers never reach a player\'s prompt', async () => {
   const { engine } = table();
   engine.newCampaign({ premise: '장부 테스트', userRole: 'spectator', players: ['mock', 'mock'] });
-  await until(() => engine.c.phase === 'declare');
+  await atDeclare(engine);
   const c = engine.c;
   assert.ok(new Ledger(c.facts).list.some((f) => f.p === '비밀'), 'worldbuild filled the ledger');
   engine.setPaused(true);
@@ -254,7 +286,7 @@ test('fact ledger: secrets and other players\' whispers never reach a player\'s 
 test('fact ledger: a clue told to one character is announced only to them', async () => {
   const { engine } = table();
   engine.newCampaign({ premise: '단서 테스트', userRole: 'spectator', players: ['mock', 'mock'] });
-  await until(() => engine.c.phase === 'declare');
+  await atDeclare(engine);
   engine.setPaused(true);
   const c = engine.c;
   engine.applyFacts({ facts: { assert: [{ fact: '단서(비늘, 은회색 비늘)', to: ['p1'] }] } });
@@ -270,7 +302,7 @@ test('fact ledger: a clue told to one character is announced only to them', asyn
 test('rules: a firing reaches the GM\'s next prompt, an ending tells the GM to close, narration clears it', async () => {
   const { engine } = table();
   engine.newCampaign({ premise: '규칙 테스트', userRole: 'spectator', players: ['mock'] });
-  await until(() => engine.c.phase === 'declare');
+  await atDeclare(engine);
   engine.setPaused(true);
   const c = engine.c;
   // The demo bot plays fast and brings its own rules; start this test from a clean slate.
@@ -297,7 +329,7 @@ test('rules: a firing reaches the GM\'s next prompt, an ending tells the GM to c
 test('clue paths: the GM sees each conclusion\'s paths and is warned once when one closes', async () => {
   const { engine } = table();
   engine.newCampaign({ premise: '단서 경로', userRole: 'spectator', players: ['mock', 'mock'] });
-  await until(() => engine.c.phase === 'declare');
+  await atDeclare(engine);
   engine.setPaused(true);
   const c = engine.c;
   c.facts.rules = [];
@@ -445,7 +477,6 @@ test('a Dungeon World story hands the GM its front and the question to open with
 test("the pace is the page's to keep: messages go out at once, and the campaign remembers the reveal speed", async () => {
   const { engine } = table();
   engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock', 'mock'] });
-  await until(() => engine.c.phase === 'declare');
   const c = engine.c;
   await until(() => c.log.some((m) => m.type === 'player' && !m.chat));
   const d = c.log.find((m) => m.type === 'player' && !m.chat);
@@ -487,7 +518,7 @@ test('long GM text comes as short beats, all at once and in order; the GM reads 
 
   const { engine } = table();
   engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock'] });
-  await until(() => engine.c.phase === 'declare');
+  await atDeclare(engine);
   engine.setPaused(true);
   await until(() => engine.busy.size === 0);
   const c = engine.c, n = c.log.length;
@@ -539,7 +570,7 @@ test('an NPC line in GM text is heard from that NPC, not from the GM', async () 
 
   const { engine } = table();
   engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock'] });
-  await until(() => engine.c.phase === 'declare');
+  await atDeclare(engine);
   engine.setPaused(true);
   await until(() => engine.busy.size === 0);
   engine.setPace('off');
