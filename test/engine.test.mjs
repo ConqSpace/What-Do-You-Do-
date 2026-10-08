@@ -774,3 +774,63 @@ test("a boss's clock is sized to the party, and a rule can't fell it before the 
   assert.ok(new Ledger(c.facts).list.some((f) => f.p === '상태' && f.args[0] === '녹쇠왕' && f.args[1] === '쓰러짐'));
   assert.ok(new Ledger(c.facts).triggered.some((t) => t.ending));
 });
+
+test("a miss is turned into trouble: the GM is told which rolls missed, picks a move, and sees the ones it used lately", async () => {
+  const P = await import('../lib/prompts.mjs');
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '보스전', userRole: 'spectator', players: ['mock', 'mock'] });
+  engine.setPaused(true);
+  const c = engine.c;
+  c.characters.p1 = engine.makeCharacter({ name: '나리', class: '도적' }, 'p1');
+  c.characters.p2 = engine.makeCharacter({ name: '도윤', class: '사냥꾼' }, 'p2');
+  const miss = { kind: 'check', who: 'p2', move: '위험 돌파', title: '위험 돌파 +근', dice: [1, 2], mod: 1, total: 4, tier: 'bad', label: '실패', text: '' };
+  const hit = { ...miss, who: 'p1', move: '협상', tier: 'mixed', label: '부분 성공', total: 8 };
+  c.resolve = { stage: 'results', who: 'p2', results: [miss] };
+  let t = P.resultsTurn(c, [miss, hit]);
+  assert.match(t, /실패 처리: 도윤의 위험 돌파/);
+  assert.match(t, /마스터 액션: .*일행 갈라놓기/);
+  assert.match(t, /부분 성공 처리: 나리의 협상/);
+  assert.match(t, /"master_move":/);
+  assert.doesNotMatch(P.resultsTurn(c, [{ ...hit, tier: 'good', label: '성공' }]), /master_move|실패 처리/);
+
+  engine.endTurn({ narration: '쇳물이 넘칩니다.', master_move: '피해 주기' });
+  c.resolve = { stage: 'results', who: 'p1', results: [miss] };
+  engine.endTurn({ narration: '사슬이 끊깁니다.', master_move: '일행 갈라놓기' });
+  assert.deepEqual(c.masterMoves, ['피해 주기', '일행 갈라놓기']);
+  t = P.resultsTurn(c, [miss]);
+  assert.match(t, /최근에 쓴 것: 피해 주기, 일행 갈라놓기/);
+});
+
+test('character names: AI players get name ideas from the class lists and are told which names recent tables used', async () => {
+  const P = await import('../lib/prompts.mjs');
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '첫 판', userRole: 'spectator', players: ['mock'] });
+  engine.setPaused(true);
+  engine.c.characters.p1 = engine.makeCharacter({ name: '도윤', class: '사냥꾼' }, 'p1');
+  engine.newCampaign({ rules: 'dw', premise: '둘째 판', userRole: 'spectator', players: ['mock', 'mock'] });
+  engine.setPaused(true);
+  const c = engine.c;
+  assert.ok(c.avoidNames.includes('도윤'), 'the last table used 도윤');
+  const ideas = engine.nameIdeas(['그레타']);
+  assert.equal(ideas.length, 6);
+  assert.ok(ideas.every((n) => n.length <= 4 && n !== '그레타' && n !== '도윤'));
+  const t = P.characterTurn(c, 'p1', { nameIdeas: ideas });
+  assert.match(t, new RegExp(`이름 후보: ${ideas[0]}`));
+  assert.match(t, /쓰지 말 이름\(최근 판에서 썼다\): .*도윤/);
+  engine.newCampaign({ rules: 'd20', premise: '셋째 판', userRole: 'spectator', players: ['mock'] });
+  engine.setPaused(true);
+  assert.deepEqual(engine.nameIdeas(), [], 'no name list outside Dungeon World');
+});
+
+test('the GM is told to keep the fiction: no move without its position, no trouble lifted for free', async () => {
+  const P = await import('../lib/prompts.mjs');
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '보스전', userRole: 'spectator', players: ['mock'] });
+  engine.setPaused(true);
+  const brief = P.gmBrief(engine.c);
+  assert.match(brief, /허구를 따져라/);
+  assert.match(brief, /공짜로|덤으로/);
+  assert.match(brief, /방어는 지키는 대상 곁에 있어야/);
+  engine.c.resolve = { stage: 'adjudicate', who: 'p1', results: [] };
+  assert.match(P.adjudicateTurn(engine.c), /판정을 고르기 전에: 이 캐릭터가 지금 그 행동을 할 수 있는 위치·상태인가/);
+});

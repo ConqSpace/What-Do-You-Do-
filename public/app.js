@@ -132,8 +132,16 @@ function connect() {
     const m = JSON.parse(e.data);
     const i = log.findIndex((x) => x.id === m.id);
     if (i >= 0) log[i] = m;
+    // Still waiting to be shown: it will be shown as it is now.
+    const q = showQueue.findIndex((x) => x.id === m.id);
+    if (q >= 0) showQueue[q] = m;
     const html = msgHtml(m, false);
     if (html) $(`#log [data-id="${m.id}"]`)?.replaceWith(htmlToNode(html));
+  });
+  // A new campaign (from this page, another one, or the API): the old log goes.
+  es.addEventListener('campaign', () => {
+    log = [];
+    renderLog();
   });
   es.addEventListener('msg', (e) => {
     const m = JSON.parse(e.data);
@@ -319,7 +327,7 @@ function showNext() {
       break;
     }
     const m = showQueue.shift();
-    const node = appendMsg(log.find((x) => x.id === m.id) || m, true);
+    const node = appendMsg(m, true);
     if (node) lastShownType = m.type;
     if (!node || skipping || m.from === 'user') continue;
     shown = reveal(node, next);
@@ -383,15 +391,15 @@ function reveal(node, done) {
 
 function renderLog() {
   const box = $('#log');
+  // Drawing the whole log shows everything; nothing is left waiting to be revealed.
+  showGen++;
+  showQueue.length = 0;
+  shown = null;
   if (!camp()) {
     box.innerHTML = '<div class="empty"><h2>What Do You Do?</h2><p>AI GM과 AI 플레이어들이 함께하는 TRPG 테이블.<br>새 캠페인으로 시작하세요.</p><button id="emptyNew">새 캠페인</button></div>';
     $('#emptyNew').onclick = openSetup;
     return;
   }
-  // Drawing the whole log shows everything; nothing is left waiting to be revealed.
-  showGen++;
-  showQueue.length = 0;
-  shown = null;
   box.innerHTML = log.map((m) => msgHtml(m, false)).join('');
   box.scrollTop = box.scrollHeight;
 }
