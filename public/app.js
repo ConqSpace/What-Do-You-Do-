@@ -530,15 +530,30 @@ function renderStory() {
       ${f.boss ? (f.note ? `<div class="muted">${esc(f.note)}</div>` : '') : `${bar({ value: f.hp, max: f.maxHp })}<div class="muted">HP ${f.hp} / ${f.maxHp}${f.note ? ` · ${esc(f.note)}` : ''}</div>`}</div>`).join('')}` : ''}
     ${c.summary ? `<h3>지금까지의 이야기</h3><div class="pre">${esc(c.summary)}</div>` : ''}
     <h3>진행</h3><p>라운드 ${c.round}</p>
-    ${c.userRole !== 'gm' ? `<h3>마스터 성향</h3><div class="seg stylepick" role="radiogroup" aria-label="마스터 성향">${Object.entries(GM_STYLE).map(([k, [label]]) => `<button type="button" data-gmstyle="${k}" role="radio" aria-checked="${(c.gmStyle || 'strict') === k}" class="${(c.gmStyle || 'strict') === k ? 'on' : ''}">${face(k)}${label}</button>`).join('')}</div>
-    <p class="muted">${esc(GM_STYLE[c.gmStyle || 'strict'][1])}</p>` : ''}`;
+    ${c.userRole !== 'gm' ? `<h3>마스터 성향</h3>${stylePick(c.gmStyle || 'strict')}` : ''}`;
 }
 
-// The AI GM's temper (lib/prompts.mjs GM_STYLES): the label and what it means at the table.
+// The AI GM's temper (lib/prompts.mjs GM_STYLES) as a pick-one card: the name, what tells them apart at a
+// glance, who they are at the table (two lines), and what they do before a roll. `short` is the story panel's line.
 const GM_STYLE = {
-  strict: ['깐깐하게', '허구를 꼼꼼히 따져요. 액션을 바꾸거나 판정을 줄이면 굴리기 전에 물어봐요.'],
-  easy: ['너그럽게', '웬만하면 하게 해 줘요. 말한 걸 통째로 한 판정에 걸고, 묻지 않고 바로 굴려요.'],
+  strict: {
+    label: '깐깐하게', tag: '물어보고 굴림',
+    intro: ['자리, 장비, 꼬인 일까지 다 기억하는 사람이에요.', '없던 밧줄을 꺼내면 "그거 언제 챙겼어요?" 해요.'],
+    sig: { name: '굴리기 전에 한 번 묻기', text: '부른 액션을 바꾸거나 "베고 숨는다"에서 베기만 굴릴 거면, 주사위 전에 먼저 물어봐요.' },
+    short: '허구를 꼼꼼히 따져요. 부른 액션을 바꾸거나 말한 것보다 적게 굴릴 땐 먼저 물어봐요.',
+  },
+  easy: {
+    label: '너그럽게', tag: '바로 굴림',
+    intro: ['웬만하면 "좋아요, 해 봐요" 하는 사람이에요.', '"주머니에 밧줄 있었죠?" 하면 있었던 걸로 해요.'],
+    sig: { name: '말한 그대로 한 번에', text: '부른 액션 그대로, "베고 숨는다"면 둘 다 걸고 한 번에 굴려요. 따로 묻지 않아요.' },
+    short: '웬만하면 하게 해 줘요. 말한 걸 통째로 한 판정에 걸고, 묻지 않고 바로 굴려요.',
+  },
 };
+// Mid-game switch (story panel): a compact pair of face cards and what the current one means.
+function stylePick(cur) {
+  return `<div class="stylepick" role="radiogroup" aria-label="마스터 성향">${Object.entries(GM_STYLE).map(([k, s]) => `<button type="button" data-gmstyle="${k}" role="radio" aria-checked="${cur === k}" class="${cur === k ? 'on' : ''}">${face(k)}<span><b>${s.label}</b><small>${s.tag}</small></span></button>`).join('')}</div>
+    <p class="muted">${esc(GM_STYLE[cur]?.short || '')}</p>`;
+}
 
 function sheetHtml(ch, full) {
   const sh = ch.sheet || { badges: [], stats: Object.entries(ch.stats || {}).map(([label, v]) => ({ label, value: sign(v) })), lists: [], tracks: [] };
@@ -792,17 +807,19 @@ function renderAll() {
 // ---------------------------------------------------------------------------
 // Setup wizard
 
-const STEP_NAME = { rules: '룰 고르기', story: '이야기 정하기', seats: '자리 배치' };
+const STEP_NAME = { rules: '룰 고르기', role: '자리 고르기', style: '성향 고르기', story: '이야기 정하기', seats: '자리 배치' };
 let step = 0;
 let setupRules = 'dw';
 let storyGenre = null; // genre of the premise when it came from a story or the 🎲 (the builder's d20 cards follow it)
 let storyPick = null; // story id, or 'gm' / 'random' / 'custom'
 let rolled = null; // the 🎲 story on screen
+let heroMore = false; // the picked story's questions and first scene: folded until asked for, then kept open
 let storyExtra = {}; // what only the GM gets from the picked story (front, questions, opening question)
 const form = () => $('#setupForm');
 const ruleMeta = () => state?.rulesets?.[setupRules] || state?.rulesets?.d20;
 const role = () => new FormData(form()).get('userRole');
-const steps = () => ['rules', 'story', 'seats'];
+// A human GM has no AI temper to pick, so they skip that page.
+const steps = () => ['rules', 'role', ...(role() === 'gm' ? [] : ['style']), 'story', 'seats'];
 
 function openSetup() {
   const avail = state?.available || {};
@@ -825,6 +842,13 @@ function openSetup() {
     <span class="rc pcard"><span class="ph"><span class="rn">${r.icon || ''} ${esc(r.label)}</span><span class="pn">${esc((r.tags || []).join(' · '))}</span></span>
     ${(r.intro || []).map((l, i) => `<span class="rd${i ? ' rd2' : ''}">${esc(l)}</span>`).join('')}
     ${r.signature ? `<span class="sig"><b>${esc(r.signature.name)}</b><span>${esc(r.signature.text)}</span></span>` : ''}</span></label>`).join('');
+  // The GM's temper: big portrait cards (character-select style), the picked one's details below.
+  const pick = camp()?.gmStyle || 'strict';
+  $('#styleCards').innerHTML = '<legend class="sr">마스터 성향</legend>' + Object.entries(GM_STYLE).map(([k, s]) => `<label class="gmcard"><input type="radio" name="gmStyle" value="${k}"${k === pick ? ' checked' : ''}>
+    <span class="gmart" style="background-image:url(${gmPortrait(k)})" aria-hidden="true"></span>
+    <span class="gmname"><b>${esc(s.label)}</b><span>${esc(s.tag)}</span></span></label>`).join('');
+  renderStyleDetail();
+  Object.keys(GM_STYLE).forEach((k) => { new Image().src = gmPortrait(k); }); // loaded before that page opens
   step = 0;
   storyPick = null;
   renderRuleLabels();
@@ -865,6 +889,8 @@ function renderRuleLabels() {
   $$('[data-role-label="player"]').forEach((x) => { x.textContent = m.playerName || '플레이어'; });
   $$('[data-role-label="gm"]').forEach((x) => { x.textContent = m.gmName || 'GM'; });
   $('#gmLabel').textContent = m.gmName || 'GM';
+  const gm = m.gmName || 'GM';
+  $('#styleQ').textContent = `어떤 ${gm}${/[가-힣]$/.test(gm) ? '가' : '이'} 좋을까요?`;
   renderHouseRules();
 }
 
@@ -875,9 +901,14 @@ function renderHouseRules() {
     <span><b>${esc(h.label)}</b><span class="muted">${esc(h.text)}</span></span></label>`).join('')}` : '';
 }
 
+function renderStyleDetail() {
+  const s = GM_STYLE[new FormData(form()).get('gmStyle')] || GM_STYLE.strict;
+  $('#styleDetail').innerHTML = `<div class="pcard on"><span class="rn">${esc(s.label)}</span>${s.intro.map((l, i) => `<span class="rd${i ? ' rd2' : ''}">${esc(l)}</span>`).join('')}
+    <span class="sig"><b>${esc(s.sig.name)}</b><span>${esc(s.sig.text)}</span></span></div>`;
+}
+
 function updateRole() {
   $('#gmBox').hidden = role() === 'gm';
-  $('#styleBox').hidden = role() === 'gm'; // a human GM has their own temper
 }
 
 // ---------------------------------------------------------------------------
@@ -913,10 +944,11 @@ function renderHero() {
   $('#storyHero').innerHTML = `<div class="shart r-${st ? st.row : 'start'}" aria-hidden="true">${(st || start).icon}</div>
     <div class="shtext"><div class="shtitle">${esc(st ? st.title : start.title)}</div>
     ${meta.length ? `<div class="shmeta">${meta.filter(Boolean).map((m, i) => `<span class="${i === 2 ? 'brec' : ''}">${esc(m)}</span>`).join('')}</div>` : ''}
+    ${st?.tags ? `<div class="shtags">${st.tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : ''}
     <p class="shsyn">${esc(situation || '')}</p>
-    ${st?.questions ? `<div class="shq"><b>이야기가 답할 질문</b><ul>${st.questions.map((q) => `<li>${esc(q)}</li>`).join('')}</ul></div>` : ''}
-    ${st?.scene ? `<div class="shep"><b>첫 장면 · ${esc(st.scene.title)}</b><span>${esc(st.scene.text)}</span>${st.scene.ask ? `<span class="shask">${esc(ruleMeta()?.gmName || 'GM')}${/[가-힣]$/.test(ruleMeta()?.gmName || 'GM') ? '가' : '이'} 먼저 물을 것: "${esc(st.scene.ask)}"</span>` : ''}</div>` : ''}
-    ${st?.tags ? `<div class="shtags">이 이야기는: ${st.tags.map(esc).join(' · ')}</div>` : ''}
+    ${st?.questions || st?.scene ? `<details class="shmore"${heroMore ? ' open' : ''}><summary><span class="c">${[st.questions ? '이야기가 답할 질문' : '', st.scene ? '첫 장면' : ''].filter(Boolean).join(' · ')} 보기</span><span class="o">접기</span></summary>
+    ${st.questions ? `<div class="shq"><b>이야기가 답할 질문</b><ul>${st.questions.map((q) => `<li>${esc(q)}</li>`).join('')}</ul></div>` : ''}
+    ${st.scene ? `<div class="shep"><b>첫 장면 · ${esc(st.scene.title)}</b><span>${esc(st.scene.text)}</span>${st.scene.ask ? `<span class="shask">${esc(ruleMeta()?.gmName || 'GM')}${/[가-힣]$/.test(ruleMeta()?.gmName || 'GM') ? '가' : '이'} 먼저 물을 것: "${esc(st.scene.ask)}"</span>` : ''}</div>` : ''}</details>` : ''}
     ${storyPick === 'random' ? '<div class="bchips"><button type="button" class="bchip dice" data-reroll>🎲 다시 뽑기</button></div>' : ''}
     ${storyPick === 'custom' ? '<p class="muted">아래 "직접 고치기"에 전제를 적어 주세요.</p>' : ''}</div>`;
 }
@@ -986,6 +1018,7 @@ form().addEventListener('submit', (e) => e.preventDefault());
 form().addEventListener('change', (e) => {
   if (e.target.name === 'userRole') { updateRole(); showStep(); }
   if (e.target.name === 'rules') renderRuleLabels();
+  if (e.target.name === 'gmStyle') renderStyleDetail();
 });
 $('#storyRows').addEventListener('click', (e) => {
   const b = e.target.closest('[data-story]');
@@ -993,6 +1026,7 @@ $('#storyRows').addEventListener('click', (e) => {
   pickStory(b.dataset.story);
   renderStories();
 });
+$('#storyHero').addEventListener('toggle', (e) => { if (e.target.matches('.shmore')) heroMore = e.target.open; }, true);
 $('#storyHero').addEventListener('click', (e) => {
   if (!e.target.closest('[data-reroll]')) return;
   pickStory('random');

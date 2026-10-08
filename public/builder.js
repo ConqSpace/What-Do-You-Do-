@@ -10,13 +10,15 @@ import { ARCHETYPES } from './archetypes.js';
 // Who the character is comes out of the choices (Dungeon World has no "concept" at all):
 // the name right after the class or occupation, the one-line introduction near the end,
 // drafted from what was picked. d20 has no classes, so its concept comes first instead.
+// Dungeon World ends on a guide to the moves the character can use: nothing to pick there, so it
+// comes after the review, and "완성" is on it.
 const PAGES = {
-  dw: ['start', 'class', 'name', 'look', 'stats', 'moves', 'alignment', 'gear', 'intro', 'bonds', 'review'],
+  dw: ['start', 'class', 'name', 'look', 'stats', 'alignment', 'gear', 'intro', 'bonds', 'review', 'moves'],
   coc7: ['start', 'chars', 'occupation', 'name', 'occSkills', 'personal', 'backstory', 'gear', 'intro', 'party', 'review'],
   d20: ['start', 'concept', 'name', 'stats', 'look', 'items', 'backstory', 'party', 'review'],
 };
 const TITLE = {
-  start: '시작', class: '직업', stats: '능력치', moves: '핵심 액션', gear: '장비', look: '외모 · 성격', alignment: '가치관',
+  start: '시작', class: '직업', stats: '능력치', moves: '액션 가이드', gear: '장비', look: '외모 · 성격', alignment: '가치관',
   name: '이름', intro: '소개', bonds: '인연', party: '동료', review: '확인', chars: '특성치', occupation: '직업', occSkills: '직업 기능',
   personal: '관심 기능', backstory: '배경', concept: '콘셉트', items: '소지품',
 };
@@ -27,6 +29,7 @@ const FIELDS = {
   occupation: ['occupation'], occSkills: ['skills'], personal: ['skills'], backstory: ['background', 'personality'],
   concept: ['concept'], items: ['items'], party: ['background'],
 };
+const READ_ONLY = ['start', 'moves', 'review']; // pages that decide nothing
 const RELATIONS = ['처음 보는 사이', '오랜 친구', '서로 빚이 있다', '왠지 믿음이 안 간다', '같은 일로 얽혀 있다', '예전에 함께 일했다'];
 const D20_DEFAULT = { 근력: 1, 민첩: 1, 체력: 1, 지능: 0, 감각: 1, 매력: 0 };
 
@@ -352,7 +355,7 @@ async function next() {
     if ((d.method || 'roll') === 'roll') await rollMissing();
   }
   if (page === 'name' && !String(d.name || '').trim()) return ctx.toast('이름을 정해 주세요 (🎲를 눌러도 돼요)');
-  if (page === 'review') return finish({ char: character() });
+  if (page === pages().at(-1)) return finish({ char: character() });
   go(1);
 }
 
@@ -463,7 +466,7 @@ function onInput(e) {
 
 function onChange(e) {
   const t = e.target;
-  if (t.dataset.score) return swapValue('scores', t.dataset.score, Number(t.value));
+  if (t.dataset.score) return setScoreMod(t.dataset.score, Number(t.value));
   if (t.dataset.quick) return swapValue('stats', t.dataset.quick, Number(t.value));
   if (t.dataset.stat) {
     d.stats[t.dataset.stat] = Math.round(Number(t.value) || 0);
@@ -494,6 +497,24 @@ function swapValue(key, stat, v) {
   const other = Object.keys(vals).find((k) => k !== stat && vals[k] === v);
   if (other) vals[other] = vals[stat];
   vals[stat] = v;
+  d.touched.stats = true;
+  redraw();
+}
+
+// Dungeon World scores are picked as modifiers (+2 +1 +1 0 0 -1); the scores behind them stay on the sheet.
+// Picking a modifier that is all taken swaps with the stat set longest ago. Two scores share +1 (15·13) and
+// 0 (12·9); 체력 always gets the higher one, because HP adds the 체력 score itself and the player never sees it.
+let scoreTouch = [];
+function setScoreMod(stat, m) {
+  const vals = d.scores;
+  if (modOf(vals[stat]) !== m) {
+    const rank = (k) => scoreTouch.indexOf(k);
+    const other = Object.keys(vals).filter((k) => k !== stat && modOf(vals[k]) === m).sort((a, b) => rank(a) - rank(b))[0];
+    if (other) [vals[stat], vals[other]] = [vals[other], vals[stat]];
+  }
+  const twin = Object.keys(vals).find((k) => k !== '체력' && modOf(vals[k]) === modOf(vals.체력) && vals[k] > vals.체력);
+  if (twin) [vals.체력, vals[twin]] = [vals[twin], vals.체력];
+  scoreTouch = [...scoreTouch.filter((k) => k !== stat), stat];
   d.touched.stats = true;
   redraw();
 }
@@ -559,7 +580,7 @@ const PAGE = {
         nums: quickNums(a), intro: a.intro, sig: quickSig(a), on: d.start === a.id })).join('')}</div>`
       + `<div class="bchips"><button type="button" class="bchip dice" data-act="deal">🎲 다른 카드</button>${cardOf(d.start) ? '<button type="button" class="bchip" data-act="review">이대로 확인으로 →</button>' : ''}</div>`
       + '<h3 class="sub">직접</h3><div class="bcards">'
-      + card('data-pick="start" data-val="scratch"', '✍ 처음부터 만들기', `${pages().length - 2}단계로 하나씩 골라요. 단계마다 추천값이 있어서 "다음"만 눌러도 돼요.`, [], d.start === 'scratch')
+      + card('data-pick="start" data-val="scratch"', '✍ 처음부터 만들기', `${pages().filter((p) => !READ_ONLY.includes(p)).length}단계로 하나씩 골라요. 단계마다 추천값이 있어서 "다음"만 눌러도 돼요.`, [], d.start === 'scratch')
       + card('data-pick="start" data-val="ai"', `🎭 ${gm()}에게 맡기기`, `원하는 캐릭터를 한 줄로 적으면 ${gmGa()} 다 만들어요.`, [], d.start === 'ai')
       + '</div>'
       + (d.start === 'ai' ? field('원하는 캐릭터 (선택)', 'hint', d.hint, '예: 겁 많은 견습 마법사') : '');
@@ -574,11 +595,11 @@ const PAGE = {
   stats() {
     if (rules() === 'dw') {
       const c = classOf();
-      return head('능력치를 나눠 볼까요?', `16·15·13·12·9·8을 하나씩 나눠 가져요. 이미 쓴 값을 고르면 서로 바뀌어요. 가장 재미있어 보이는 액션에 쓰는 능력치에 16을 주세요. 판정은 2d6 + 능력수정치예요.`)
+      return head('능력치를 나눠 볼까요?', `+2 하나, +1 둘, 0 둘, -1 하나를 나눠 가져요. 다 쓴 값을 고르면 서로 바뀌어요. 가장 재미있어 보이는 액션에 쓰는 능력치에 +2를 주세요. 판정은 2d6 + 이 값이에요.`)
         + `<div class="brows">${info.stats.map((s) => {
-          const v = d.scores[s.name];
-          return `<div class="brow"><div class="bl"><b>${s.name}</b> <span class="mod">${sg(modOf(v))}</span><small>${esc(s.help)}</small></div>
-            <select data-score="${s.name}" aria-label="${s.name}">${info.scores.map((x) => `<option${x === v ? ' selected' : ''}>${x}</option>`).join('')}</select></div>`;
+          const m = modOf(d.scores[s.name]);
+          return `<div class="brow"><div class="bl"><b>${s.name}</b><small>${esc(s.help)}</small></div>
+            <select data-score="${s.name}" aria-label="${s.name}">${[2, 1, 0, -1].map((x) => `<option value="${x}"${x === m ? ' selected' : ''}>${x ? sg(x) : '0'}</option>`).join('')}</select></div>`;
         }).join('')}</div>`
         + `<div class="bchips"><button type="button" class="bchip" data-act="recommend">${esc(c?.name || '')} 추천 배치로</button></div>`;
     }
@@ -590,14 +611,22 @@ const PAGE = {
       + '<div class="bchips"><button type="button" class="bchip" data-act="recommend">고르게 나누기</button></div>';
   },
 
+  // What the character can do at the table, with the number each move adds to 2d6 (best first).
   moves() {
     const c = classOf();
-    const abbr = { 근력: '+근', 민첩성: '+민', 체력: '+체', 지능: '+지', 지혜: '+혜', 매력: '+매' };
-    return head(`${c.name}의 핵심 액션`, '액션은 특별한 행동이에요. 이름을 외칠 필요는 없고, 이야기 속에서 그 행동을 하면 마스터가 판정을 불러요. 여기서는 읽어만 보세요.')
-      + `<div class="bmoves">${c.moves.map((m) => `<div class="bmove"><b>${esc(m.name)}</b>${m.stat ? ` <span class="muted">· ${esc(abbr[m.stat] || m.stat)} 판정</span>` : ''}
-        <div>${esc(m.when)}</div><div class="muted">10+ ${esc(m.strong)}${m.weak ? ` · 7~9 ${esc(m.weak)}` : ''}</div></div>`).join('')}</div>`
+    const bonus = (stat) => {
+      if (!stat) return '<span class="bbonus">상황 따라</span>';
+      if (!d.scores?.[stat]) return `<span class="bbonus">+${esc(stat)}</span>`;
+      const m = modOf(d.scores[stat]);
+      return `<span class="bbonus${m > 0 ? ' up' : m < 0 ? ' down' : ''}">${esc(stat)} ${m ? sg(m) : '0'}</span>`;
+    };
+    const rank = (m) => (m.stat && d.scores?.[m.stat] ? modOf(d.scores[m.stat]) : -9);
+    const row = (m, full) => `<div class="bmove"><div class="bmh"><b>${esc(m.name)}</b>${bonus(m.stat)}</div><div>${esc(m.when)}</div>${full && m.strong ? `<div class="muted">10+ ${esc(m.strong)}${m.weak ? ` · 7~9 ${esc(m.weak)}` : ''}</div>` : ''}</div>`;
+    return head(`${d.name || c.name}의 액션`, `고를 건 없어요. 이야기 속에서 이런 행동을 하면 ${gmGa()} 판정을 불러요. 이름을 외칠 필요는 없어요. 옆의 숫자는 그때 2d6에 더하는 값이에요.`)
+      + `<h3 class="sub">${esc(c.name)}만의 액션</h3><div class="bmoves">${c.moves.map((m) => row(m, true)).join('')}</div>`
       + `<h3 class="sub">판정 없이 갖는 것</h3><ul class="blist">${c.passives.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>`
-      + `<h3 class="sub">누구나 쓰는 기본 액션</h3><p class="muted">${info.basicMoves.map(esc).join(' · ')}</p>`;
+      + `<h3 class="sub">누구나 쓰는 기본 액션 <span class="muted">잘하는 것부터</span></h3><div class="bmoves">${[...info.basicMoves].sort((a, b) => rank(b) - rank(a)).map((m) => row(m)).join('')}</div>`
+      + `<p class="muted">판정은 10 이상이면 성공, 7~9면 해내지만 대가가 따르고, 6 이하면 ${gmGa()} 움직여요. 대신 경험치 +1.</p>`;
   },
 
   gear() {
@@ -762,7 +791,7 @@ const PAGE = {
   },
 
   review() {
-    const list = pages().filter((p) => p !== 'start' && p !== 'review');
+    const list = pages().filter((p) => !READ_ONLY.includes(p));
     return head('이대로 시작할까요?', '고치고 싶은 단계를 누르면 그 페이지로 가요.')
       + `<div class="bpreview">${previewHtml()}</div>`
       + chipsRow(list.map((p) => `<button type="button" class="bchip" data-act="go" data-page="${p}">${TITLE[p]} 고치기</button>`).join(''));
@@ -842,10 +871,10 @@ function renderPage() {
   $('#buildCount').textContent = `${i + 1} / ${list.length}`;
   $('#buildStep').textContent = TITLE[d.page];
   $('#buildPrev').hidden = i === 0;
-  const last = d.page === 'review';
+  const last = i === list.length - 1;
   $('#buildNext').textContent = last ? '완성 · 테이블로' : d.page === 'start' && d.start === 'ai' ? `${gm()}에게 맡기기` : `다음 · ${TITLE[list[i + 1]]}`;
   $('#buildRest').textContent = `나머지는 ${gm()}에게`;
-  $('#buildRest').hidden = d.page === 'start' || last || !!d.card;
+  $('#buildRest').hidden = READ_ONLY.includes(d.page) || !!d.card;
   if (!info) { $('#buildMain').innerHTML = '<p class="muted">불러오는 중…</p>'; return; }
   if (d.page !== 'start') init(d.page);
   $('#buildMain').innerHTML = `<div class="bpage">${PAGE[d.page]()}</div>`;
@@ -861,7 +890,7 @@ function previewHtml() {
     sheet.badges = [ch.class, ch.alignment && `가치관 ${ch.alignment}`, c && `피해 ${c.damage}`, c && `장갑 ${dwGear().armor}`].filter(Boolean);
     if (c && d.scores) {
       sheet.tracks = [{ label: 'HP', value: c.hp + d.scores.체력, max: c.hp + d.scores.체력 }];
-      sheet.stats = info.stats.map((s) => ({ label: s.name, value: sg(modOf(d.scores[s.name])), sub: String(d.scores[s.name]) }));
+      sheet.stats = info.stats.map((s) => ({ label: s.name, value: sg(modOf(d.scores[s.name])) })); // modifiers only, as picked
     }
     if (ch.bonds?.length) sheet.lists.push({ title: '인연', items: ch.bonds.map((b) => b.text) });
   } else if (r === 'coc7') {

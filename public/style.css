@@ -169,9 +169,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 /* The AI GM's portrait: the face, cropped round from a half-length picture. */
 .face { display: inline-block; border-radius: 50%; flex: none; background-color: #f3eee2; background-size: 175%; background-position: 50% 24%; background-repeat: no-repeat; }
 .face:not(.avatar) { width: 28px; height: 28px; }
-.narration .tag { display: flex; align-items: center; gap: 6px; }
-.narration .tag .face { width: 22px; height: 22px; }
-.stylepick button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+/* The GM sits a size up in the strip: a face has to read at a glance, letters don't. */
+.seat.gm .face.avatar { width: 52px; height: 52px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+.seat.gm { width: 72px; }
+.seat.gm .name { max-width: 72px; }
+.narration .tag .face { width: 40px; height: 40px; box-shadow: 0 0 0 1px var(--narr-line); }
 .seat .who { display: contents; }
 .seat .info { display: contents; }
 .seat .name { font-size: 12px; line-height: 1.2; max-width: 66px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -209,7 +211,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
   font-family: var(--serif); font-size: 16px; line-height: 1.75;
   white-space: pre-wrap;
 }
-.narration .tag { display: block; font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--narr-tag); margin-bottom: 6px; }
+.narration .tag { display: flex; align-items: center; gap: 8px; font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--narr-tag); margin-bottom: 6px; line-height: 1.3; }
 .scene { text-align: center; color: var(--accent); font-weight: 700; padding: 6px 0; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); }
 .scene small { display: block; color: var(--muted); font-weight: 400; }
 /* A player's message: one bubble, whatever it mixes. The player's own words are plain text,
@@ -507,10 +509,50 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
 }
 .seg input { width: auto; min-height: 0; margin: 0; accent-color: var(--accent); }
 .seg label:has(input:checked) { background: var(--me-bg); border-color: var(--accent); font-weight: 600; }
-/* Two choices (the GM's temper): two columns; in the story panel they are buttons. */
-#styleBox .seg, .seg.stylepick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.stylepick button { min-height: 40px; border-radius: 12px; background: var(--surface2); border: 1px solid var(--line); color: var(--text); font-size: 14px; }
-.stylepick button.on { background: var(--me-bg); border-color: var(--accent); font-weight: 600; }
+/* 내 자리: a card per seat, an icon, the name and one line. */
+.rolecards { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.rolecard {
+  display: flex; align-items: center; gap: 12px; padding: 14px; margin: 0 !important; border-radius: var(--radius);
+  background: var(--surface2); border: 1px solid var(--line); color: var(--text) !important; cursor: pointer;
+}
+.rolecard input { width: 20px; height: 20px; min-height: 0; margin: 0; flex: none; accent-color: var(--accent); }
+.rolecard .ri { font-size: 28px; line-height: 1; flex: none; }
+.rolecard .rc { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rolecard b { font-size: 16px; }
+.rolecard .rc > span { word-break: keep-all; font-size: 13px; color: color-mix(in srgb, var(--text) 80%, var(--bg)); }
+.rolecard:has(input:checked) { border-color: var(--accent); background: var(--me-bg); }
+/* The GM's temper: character select. Big portraits side by side, the one not picked dimmed,
+   and the picked one's card (who they are, what they do before a roll) underneath. */
+.gmcards { border: 0; margin: 0 auto; padding: 0; width: 100%; max-width: 480px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.gmcard {
+  position: relative; display: flex; flex-direction: column; margin: 0 !important; border-radius: var(--radius); overflow: hidden;
+  background: var(--surface2); border: 2px solid var(--line); color: var(--text) !important; cursor: pointer; transition: border-color .15s, transform .15s;
+}
+.gmcard input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; min-height: 0; margin: 0; opacity: 0; }
+.gmcard .gmart { display: block; aspect-ratio: 4 / 5; background-color: #f3eee2; background-size: cover; background-position: 50% 0; background-repeat: no-repeat; transition: filter .15s; }
+.gmcard .gmname { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 6px 10px; text-align: center; }
+.gmcard .gmname b { font-family: var(--serif); font-size: 18px; }
+.gmcard .gmname span { font-size: 12px; color: var(--muted); }
+.gmcard:not(:has(input:checked)) .gmart { filter: grayscale(.8) brightness(.7); }
+.gmcard:not(:has(input:checked)) .gmname b { color: var(--muted); }
+.gmcard:has(input:checked) { border-color: var(--accent); background: var(--me-bg); transform: translateY(-2px); }
+.gmcard:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gmdetail { width: 100%; max-width: 480px; margin: 4px auto 0; }
+.gmdetail .pcard { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: var(--radius); background: var(--surface2); border: 1px solid var(--line); }
+.gmdetail .rn { font-weight: 700; font-size: 16px; }
+.gmdetail .rd, .gmdetail .sig span { word-break: keep-all; } .gmdetail .rd { font-size: 14px; color: color-mix(in srgb, var(--text) 85%, var(--bg)); }
+#styleDetail + .muted { max-width: 480px; margin: 0 auto; width: 100%; font-size: 13px; }
+/* Mid-game switch in the story panel: a compact pair of face cards. */
+.stylepick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.stylepick button {
+  display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 8px 10px; text-align: left;
+  border-radius: 12px; background: var(--surface2); border: 1px solid var(--line); color: var(--text); font-size: 14px; font-weight: 400;
+}
+.stylepick button .face { width: 40px; height: 40px; }
+.stylepick button > span:last-child { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.stylepick button small { font-size: 11.5px; color: var(--muted); }
+.stylepick button:not(.on) .face { filter: grayscale(.8) brightness(.8); }
+.stylepick button.on { background: var(--me-bg); border-color: var(--accent); }
 .check { display: flex !important; align-items: center; gap: 8px; color: var(--text) !important; font-size: 15px !important; min-height: 44px; }
 .check input { width: 20px; height: 20px; min-height: 0; accent-color: var(--accent); }
 .presets { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -526,7 +568,15 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
 .shsyn { margin: 0; font-size: 14px; line-height: 1.6; }
 .shep { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line2); font-size: 13px; }
 .shep b { color: var(--accent); font-size: 12.5px; }
-.shtags { font-size: 12px; color: var(--muted); }
+.shtags { display: flex; flex-wrap: wrap; gap: 4px; }
+.shtags span { font-size: 11.5px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line2); color: var(--muted); }
+/* Questions and the first scene wait behind one line, so the page opens on just the pitch. */
+.shmore summary { cursor: pointer; font-size: 13px; color: var(--accent); list-style: none; padding: 2px 0; }
+.shmore summary::-webkit-details-marker { display: none; }
+.shmore summary::before { content: '▸ '; }
+.shmore[open] summary::before { content: '▾ '; }
+.shmore[open] { display: flex; flex-direction: column; gap: 8px; }
+.shmore:not([open]) .o, .shmore[open] .c { display: none; }
 .shq { font-size: 13px; }
 .shq b { font-size: 12.5px; color: var(--accent); }
 .shq ul { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
@@ -609,10 +659,9 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
 .pcard .sig b { font-size: 13px; color: var(--accent); }
 .pcard .sig span { font-size: 12.5px; color: color-mix(in srgb, var(--text) 85%, var(--bg)); }
 .rulecard .rc.pcard { flex: 1; min-width: 0; }
-@media (max-width: 899px) {
-  .pcard:not(.on) .rd2, .pcard:not(.on) .sig { display: none; }
-  .rulecard:not(:has(input:checked)) .rd2, .rulecard:not(:has(input:checked)) .sig { display: none; }
-}
+/* A pick-one list reads as names and one line each; only the picked card opens to its second line and signature. */
+.pcard:not(.on) .rd2, .pcard:not(.on) .sig { display: none; }
+.rulecard:not(:has(input:checked)) .rd2, .rulecard:not(:has(input:checked)) .sig { display: none; }
 .brec { font-size: 11px; padding: 1px 6px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); vertical-align: 2px; }
 .bchips, .bseg { display: flex; flex-wrap: wrap; gap: 6px; }
 .bchip { background: var(--surface2); color: var(--text); border-color: var(--line); font-size: 14px; font-weight: 500; min-height: 40px; border-radius: 20px; padding: 0 12px; }
@@ -636,6 +685,10 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
 .bq { display: flex; flex-direction: column; gap: 6px; }
 .bmoves { display: flex; flex-direction: column; gap: 8px; }
 .bmove { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface2); display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.bmh { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.bbonus { flex: none; font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line2); color: var(--muted); white-space: nowrap; }
+.bbonus.up { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--line2)); font-weight: 600; }
+.bbonus.down { color: var(--bad); }
 .blist { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 .bbond { display: grid; grid-template-columns: 1fr 44px; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; }
 .bbond select, .bbond input { grid-column: 1; }
@@ -654,7 +707,10 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
     column-gap: 10px; row-gap: 8px; align-items: center; text-align: left;
     padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface2); position: relative;
   }
-  .seat.gm { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+  .seat.gm:has(.face) { grid-template-columns: 64px 1fr; }
+  .seat.gm { width: 100%; border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+  .seat.gm .face.avatar { width: 64px; height: 64px; }
+  .seat.gm .name { max-width: none; }
   .seat .avatar { grid-area: av; }
   .seat .info { display: flex; flex-direction: column; grid-area: info; min-width: 0; }
   .seat .name { font-size: 15px; font-weight: 700; max-width: none; }
@@ -688,6 +744,7 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
   .buildside summary { display: none; }
   #buildSideBody { padding-top: 14px; }
   .bcards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bcards:has(> .pcard) { grid-template-columns: 1fr; } /* one list, like the phone: the picked card opens without stretching a neighbour */
   .players { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 

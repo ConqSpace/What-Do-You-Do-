@@ -162,20 +162,25 @@
           <h2 class="q">오늘은 어떤 모험을 할까요?</h2>
           <fieldset class="rulecards" id="rulesSeg"><legend class="sr">룰 시스템</legend></fieldset>
           <div id="houseBox"></div>
-          <div id="styleBox">
-            <h3 class="sub">마스터 성향</h3>
-            <div class="seg" role="radiogroup" aria-label="마스터 성향">
-              <label><input type="radio" name="gmStyle" value="strict" checked> <span class="face" style="background-image:url(/img/gm-strict.webp)" aria-hidden="true"></span> <span>깐깐하게</span></label>
-              <label><input type="radio" name="gmStyle" value="easy"> <span class="face" style="background-image:url(/img/gm-easy.webp)" aria-hidden="true"></span> <span>너그럽게</span></label>
-            </div>
-            <p class="muted">깐깐하게: 허구를 따지고, 액션을 바꾸거나 판정을 줄이면 굴리기 전에 물어봐요. 너그럽게: 웬만하면 하게 해 주고 바로 굴려요.</p>
-          </div>
-          <h3 class="sub">내 자리</h3>
-          <div class="seg" id="roleSeg" role="radiogroup" aria-label="내 자리">
-            <label><input type="radio" name="userRole" value="player" checked> <span data-role-label="player">플레이어</span></label>
-            <label><input type="radio" name="userRole" value="spectator"> <span>관전</span></label>
-            <label><input type="radio" name="userRole" value="gm"> <span data-role-label="gm">GM</span></label>
-          </div>
+        </section>
+
+        <section class="step" data-step="role" hidden>
+          <h2 class="q">어디에 앉을까요?</h2>
+          <fieldset class="rolecards" id="roleSeg"><legend class="sr">내 자리</legend>
+            <label class="rolecard"><input type="radio" name="userRole" value="player" checked>
+              <span class="ri" aria-hidden="true">🎭</span><span class="rc"><b data-role-label="player">플레이어</b><span>내 캐릭터로 AI 동료들과 같이 모험해요.</span></span></label>
+            <label class="rolecard"><input type="radio" name="userRole" value="spectator">
+              <span class="ri" aria-hidden="true">🍿</span><span class="rc"><b>관전</b><span>AI끼리 하는 판을 옆에서 편하게 구경해요.</span></span></label>
+            <label class="rolecard"><input type="radio" name="userRole" value="gm">
+              <span class="ri" aria-hidden="true">📜</span><span class="rc"><b data-role-label="gm">GM</b><span>이야기는 내가 끌고 가요. AI <span data-role-label="player">플레이어</span>들이 따라와요.</span></span></label>
+          </fieldset>
+        </section>
+
+        <section class="step" data-step="style" hidden>
+          <h2 class="q" id="styleQ">어떤 GM이 좋을까요?</h2>
+          <fieldset class="gmcards" id="styleCards"><legend class="sr">마스터 성향</legend></fieldset>
+          <div class="gmdetail" id="styleDetail" aria-live="polite"></div>
+          <p class="muted">어느 쪽이든 굴리기 전에 뭐가 걸렸는지 말해 주고, 굴린 다음엔 말을 바꾸지 않아요. 게임 중에도 이야기 패널에서 바꿀 수 있어요.</p>
         </section>
 
         <section class="step" data-step="story" hidden>
