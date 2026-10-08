@@ -569,9 +569,10 @@ function openSetup() {
   $('#presets').innerHTML = '<button type="button" class="dice" data-random>🎲 무작위</button>'
     + PRESETS.map(([l], i) => `<button type="button" data-preset="${i}">${l}</button>`).join('');
   form().userName.value = loadName() || form().userName.value;
-  const rs = Object.values(state?.rulesets || {});
+  // A rule system marked hidden is left off this screen (its campaigns still run).
+  const rs = Object.values(state?.rulesets || {}).filter((r) => !r.hidden);
   if (camp()?.rules) setupRules = camp().rules;
-  if (!state?.rulesets?.[setupRules]) setupRules = rs[0]?.id || 'd20';
+  if (!rs.some((r) => r.id === setupRules)) setupRules = rs.find((r) => r.id === 'dw')?.id || rs[0]?.id || 'd20';
   $('#rulesSeg').innerHTML = '<legend class="sr">룰 시스템</legend>' + rs.map((r) => `<label class="rulecard"><input type="radio" name="rules" value="${r.id}"${r.id === setupRules ? ' checked' : ''}>
     <span class="rc"><span class="rn">${esc(r.label)}</span><span class="rd">${esc(r.blurb || '')}</span><span class="rt">${(r.tags || []).map((t) => `<span>${esc(t)}</span>`).join('')}</span></span></label>`).join('');
   step = 0;
