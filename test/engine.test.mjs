@@ -857,6 +857,9 @@ test('positions in the ledger: a defend from across the room goes back to the GM
   const orig = engine.backends.chat.bind(engine.backends);
   engine.backends.chat = async (seat, kind, brief, t, ctx) => {
     if (kind !== 'adjudicate') return orig(seat, kind, brief, t, ctx);
+    // The demo bot answers at once: the table may reach the next turn before the poll below
+    // sees the roll. That turn waits here.
+    if (turns.length >= 2) return new Promise(() => {});
     turns.push(t);
     const retry = t.includes('서버가 받지 않은 판정');
     return { ok: true, text: JSON.stringify({ checks: [retry ? { who: 'p2', move: '위험 돌파', stat: '민첩성', why: '웅덩이 건너기' } : { who: 'p2', move: '방어', target: 'p1', why: '탄 지키기' }] }) };
