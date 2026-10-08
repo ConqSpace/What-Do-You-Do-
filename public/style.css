@@ -203,11 +203,25 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .declare .bubble { flex: 1; min-width: 0; background: var(--surface2); border: 1px solid var(--line); border-radius: 4px 14px 14px 14px; padding: 8px 12px; }
 .declare .who { font-size: 12px; color: var(--muted); }
 .declare .who b { color: var(--text); }
-.declare .move { display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent); margin-right: 4px; }
+.declare .move { display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 99px; padding: 0 8px; margin: 2px 0 4px; }
 .declare .say { font-weight: 600; }
 .declare .say::before { content: '“'; }
 .declare .say::after { content: '”'; }
-.declare .act { font-style: italic; color: color-mix(in srgb, var(--text) 82%, var(--bg)); }
+/* What the character says reads as speech; what the player declares reads as a table remark. */
+.declare .say + .act { margin-top: 4px; }
+.declare .act { font-size: 14px; color: color-mix(in srgb, var(--text) 72%, var(--bg)); }
+.declare .act::before { content: '▸ '; color: var(--accent); }
+/* NPC lines: the GM's voice, so they wear the narration colors. */
+.npc { display: flex; gap: 8px; align-items: flex-start; }
+.npc .avatar { width: 32px; height: 32px; font-size: 13px; color: #fff; }
+.npc .bubble { flex: 0 1 auto; max-width: 84%; background: var(--narr-bg); border: 1px solid var(--narr-line); border-radius: 4px 14px 14px 14px; padding: 8px 12px; }
+.npc .who { font-size: 12px; color: var(--narr-tag); }
+.npc .who b { color: var(--narr-text); }
+.npc .say { font-family: var(--serif); color: var(--narr-text); font-weight: 600; }
+.npc .say::before { content: '“'; }
+.npc .say::after { content: '”'; }
+.declare .line { font-weight: 500; }
+.turnbar select { width: auto; min-height: 36px; padding: 0 8px; font-size: 13px; }
 .declare.me { justify-content: flex-end; }
 .declare.me .avatar { display: none; }
 .declare.me .bubble { flex: 0 1 auto; max-width: 84%; background: var(--me-bg); border-color: var(--me-line); border-radius: 14px 4px 14px 14px; }
@@ -217,11 +231,12 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .system { text-align: center; font-size: 13px; color: var(--muted); white-space: pre-wrap; }
 .system.effect { color: color-mix(in srgb, var(--bad) 70%, var(--text)); }
 .system.clue { color: var(--accent); }
+/* Whispers are asides: one quiet line. */
 .whisper {
-  border: 1px dashed color-mix(in srgb, var(--san) 60%, var(--line)); border-radius: var(--radius);
-  background: color-mix(in srgb, var(--san) 8%, var(--bg)); padding: 10px 14px; font-size: 14px; white-space: pre-wrap;
+  border-left: 2px dashed color-mix(in srgb, var(--san) 60%, var(--line));
+  padding: 2px 0 2px 12px; font-size: 13px; color: color-mix(in srgb, var(--text) 75%, var(--bg)); white-space: pre-wrap;
 }
-.whisper .tag { display: block; font-size: 12px; font-weight: 600; color: var(--san); margin-bottom: 4px; }
+.whisper .tag { font-size: 12px; font-weight: 600; color: var(--san); }
 .system.ledger { text-align: left; font-size: 12px; font-family: ui-monospace, monospace; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
 .facts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .facts li { font-size: 13px; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--line); }
@@ -264,17 +279,27 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .cluepath li.known .st { color: var(--good); }
 .cluepath .src { font-size: 12px; color: var(--san); }
 .factgroup h4 { margin: 10px 0 2px; font-size: 13px; color: var(--muted); }
-.system.intro { text-align: left; background: var(--surface2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; color: var(--text); font-size: 14px; }
+.system.intro { text-align: left; background: var(--surface2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; color: var(--text); font-size: 14px; white-space: pre-wrap; }
+/* The beats of one GM speech read as one box: the next beat joins the box above it. */
+.narration:has(+ .narration.cont), .system.intro:has(+ .system.intro.cont) {
+  border-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; padding-bottom: 4px;
+}
+.narration + .narration.cont, .system.intro + .system.intro.cont {
+  margin-top: -12px; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; padding-top: 4px;
+}
 
 /* roll cards */
 .roll {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; font-size: 14px;
+  padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 14px;
 }
-.rollhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.rollhead .who { font-size: 13px; color: var(--muted); min-width: 0; }
+.rollhead { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+.rollhead .who { font-size: 14px; color: var(--muted); min-width: 0; margin-right: auto; }
+.rollnums { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.rollnums .die { min-width: 24px; height: 24px; font-size: 14px; border-radius: 6px; padding: 0 4px; }
+.rollnums .total { font-size: 18px; margin-left: 2px; }
 .rollhead .who b { color: var(--text); }
-.res { flex: none; font-size: 12px; font-weight: 700; color: var(--bg); background: var(--muted); border-radius: 99px; padding: 2px 10px; white-space: nowrap; }
+.res { flex: none; font-size: 13px; font-weight: 700; color: var(--bg); background: var(--muted); border-radius: 99px; padding: 2px 10px; white-space: nowrap; }
 .rollbody { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .die {
   min-width: 36px; height: 36px; padding: 0 6px; border-radius: 8px;
@@ -639,3 +664,39 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
   .side { position: static; transform: none; width: 340px; flex: none; z-index: auto; transition: none; }
   .scrim { display: none; }
 }
+
+/* A move's name: hover, long-press or focus it to see what the move does. */
+.tipped { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; -webkit-touch-callout: none; user-select: none; }
+#moveChips [data-tip-move] { -webkit-touch-callout: none; user-select: none; }
+#tip {
+  position: fixed; z-index: 1000; box-sizing: border-box;
+  background: var(--surface); color: var(--text); border: 1px solid var(--line2); border-radius: 10px;
+  padding: 10px 12px; font-size: 13px; line-height: 1.5; box-shadow: 0 6px 24px rgb(0 0 0 / .35);
+  display: flex; flex-direction: column; gap: 4px; pointer-events: none;
+}
+#tip[hidden] { display: none; }
+#tip .tiphead { font-size: 14px; }
+#tip .tipwhen { color: var(--muted); }
+#tip .tiprow { display: grid; grid-template-columns: 34px 1fr; gap: 6px; padding: 2px 4px; border-radius: 6px; }
+#tip .tiprow b { color: var(--muted); }
+#tip .tiprow.hit { background: var(--surface2); }
+#tip .tiprow.hit b { color: var(--accent); }
+
+/* House rules on the new-campaign screen. */
+#houseBox:empty { display: none; }
+.house { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; cursor: pointer; }
+.house input[type=checkbox] { width: 18px; height: 18px; min-height: 0; padding: 0; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.house > span { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.house .muted { font-size: 13px; }
+
+/* A character's bonds fold to one line. */
+.system.bonds summary { cursor: pointer; }
+.system.bonds > div { text-align: left; margin: 6px auto 0; max-width: 520px; }
+
+/* Known facts in the scene tab: a name, then what is known about it. */
+.facts.plain li { display: block; }
+.facts.plain b { font-weight: 600; }
+
+/* A player's answer to the GM's question: table talk, above the character's words. */
+.declare .ans { font-size: 14px; margin-bottom: 4px; }
+.declare .ans .muted { font-size: 12px; font-weight: 600; margin-right: 4px; }

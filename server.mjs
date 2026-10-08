@@ -27,6 +27,7 @@ const DEFAULT_CFG = {
   waitForUser: true, // the GM waits for the human player's declaration each round
   autoPauseRounds: 8, // spectator: pause after this many rounds without a word from the human (0 = never)
   mockDelayMs: 700,
+  readPace: 'normal', // how fast the table lets people read: 'slow' | 'normal' | 'fast' | 'off'
   backends: {
     claude: { model: 'sonnet' },
     codex: { model: 'gpt-6-sol', effort: 'low' },
@@ -114,6 +115,8 @@ async function handleApi(req, res, url) {
     case '/api/roll': err = engine.userRollCheck(body.id); break;
     case '/api/choose': err = engine.userChoose(body.id, body.picks, body.text); break;
     case '/api/pause': engine.setPaused(!!body.paused); break;
+    case '/api/skip': err = engine.skipReading(); break;
+    case '/api/pace': err = engine.setPace(body.pace); break;
     case '/api/builder/draft': err = engine.builderSave(body.draft); break;
     case '/api/builder/roll': err = engine.builderRoll(body.name); break;
     case '/api/builder/finish': err = engine.builderFinish(body); break;

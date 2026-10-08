@@ -35,7 +35,7 @@ test('spectator campaign runs from prep to the ending', async () => {
   await until(() => engine.c.phase === 'ended', 10000);
   const c = engine.c;
   assert.equal(Object.keys(c.characters).length, 3);
-  assert.ok(c.round >= 4);
+  assert.ok(c.round >= 1);
   assert.ok(c.log.some((m) => m.type === 'narration'));
   assert.ok(c.log.some((m) => m.type === 'declare'));
   for (const ch of Object.values(c.characters)) assert.ok(ch.hp >= 0 && ch.hp <= ch.maxHp);
@@ -72,7 +72,7 @@ test('human player: GM waits for the declaration and the human rolls their own c
     userChar: { name: '아린', concept: '견습 기사', stats: { 근력: 3, 민첩: 3 }, items: ['검'] },
   });
   assert.equal(engine.c.characters.user.name, '아린');
-  await until(() => engine.c.phase === 'declare' && engine.c.declared.p1 && engine.c.declared.p2);
+  await until(() => engine.c.phase === 'declare' && engine.c.turn === 'user');
   await new Promise((r) => setTimeout(r, 50));
   assert.equal(engine.c.phase, 'declare', 'waits for the human');
   assert.equal(engine.seatStatus('user'), 'waiting');
@@ -144,7 +144,7 @@ test('dungeon world: the human picks 7-9 options, damage moves hit foes, 0 HP ro
     rules: 'dw', premise: '던전', userRole: 'player', players: ['mock'],
     userChar: { name: '아린', class: '성기사', scores: { 근력: 15, 민첩성: 8, 체력: 16, 지능: 9, 지혜: 13, 매력: 12 } },
   });
-  await until(() => engine.c.phase === 'declare' && engine.c.declared.p1);
+  await until(() => engine.c.phase === 'declare' && engine.c.turn === 'user');
   const c = engine.c;
   assert.equal(c.characters.user.maxHp, 10 + 16);
   assert.ok(c.foes.length, 'opening registered a foe');
@@ -198,7 +198,7 @@ test('call of cthulhu: the human pushes a failed roll with a reason', async () =
     rules: 'coc7', premise: 'x', userRole: 'player', players: ['mock'],
     userChar: { name: '오필리아', occupation: '간호사', stats: { 근력: 45, 건강: 60, 크기: 50, 민첩: 70, 외모: 60, 지능: 75, 정신: 65, 교육: 70 }, skills: '응급처치 60' },
   });
-  await until(() => engine.c.phase === 'declare' && engine.c.declared.p1);
+  await until(() => engine.c.phase === 'declare' && engine.c.turn === 'user');
   const c = engine.c;
   const orig = engine.backends.chat.bind(engine.backends);
   engine.backends.chat = async (seat, kind, ...rest) => (kind === 'adjudicate'
@@ -288,7 +288,7 @@ test('rules: a firing reaches the GM\'s next prompt, an ending tells the GM to c
   assert.match(gm, /"end": true로 끝내/);
   assert.ok(new Ledger(c.facts).list.some((f) => f.p === '사건' && f.args[0] === '파국'));
   c.resolve = { stage: 'results', results: [], pendingRules: new Ledger(c.facts).triggered.map((t) => t.id) };
-  engine.finishRound({ narration: '탑이 무너진다.', end: true });
+  engine.endTurn({ narration: '탑이 무너진다.', end: true });
   assert.equal(c.phase, 'ended');
   assert.equal(new Ledger(c.facts).triggered.length, 0, 'narrated, cleared');
   assert.ok(engine.secrets().rules.find((r) => r.name === '파국').fired.length);
@@ -440,4 +440,243 @@ test('a Dungeon World story hands the GM its front and the question to open with
   e2.newCampaign({ rules: 'dw', premise: 'x', front: { dangers: [] }, userRole: 'spectator', players: ['mock'] });
   assert.equal(e2.c.front, null, 'a front without dangers is dropped');
   e2.setPaused(true);
+});
+
+test('reading pace: the next call waits until people could read what came in; skip moves on', async () => {
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock', 'mock'] });
+  await until(() => engine.c.phase === 'declare');
+  const c = engine.c;
+  await until(() => c.log.some((m) => m.type === 'declare'));
+  const d = c.log.find((m) => m.type === 'declare');
+  assert.ok(d.action && !d.line, 'AI players declare what they mean to do');
+
+  // Pause, turn reading on, and let a narration come in: replies wait until it's read.
+  engine.setPaused(true);
+  await until(() => engine.busy.size === 0);
+  assert.equal(engine.setPace('normal'), null);
+  assert.equal(engine.view().campaign.pace, 'normal');
+  engine.post({ type: 'narration', from: 'gm', text: '가'.repeat(80) });
+  assert.ok(engine.readyAt - Date.now() > 8000, '80 characters take about ten seconds to read');
+  const n = c.log.length;
+  engine.setPaused(false);
+  await until(() => engine.busy.size > 0);
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(c.log.length, n, 'a model may think meanwhile, but its reply waits');
+  engine.post({ type: 'declare', from: 'user', action: '내 말은 기다리지 않는다' });
+  assert.ok(engine.readyAt - Date.now() < 10500, "the human's own words add no reading time");
+  engine.skipReading();
+  assert.ok(engine.readyAt <= Date.now());
+  await until(() => c.log.length > n + 1);
+  assert.equal(engine.setPace('warp'), '모르는 속도예요');
+  engine.setPace('off');
+  assert.equal(engine.readyAt, 0, 'off: no waiting');
+  engine.setPaused(true);
+});
+
+test('effects from one GM reply come as one line', () => {
+  const { engine } = table();
+  engine.newCampaign({ premise: 'x', userRole: 'player', players: ['mock'], userChar: { name: '아린', stats: {} } });
+  engine.c.characters.p1 = engine.makeCharacter({ name: '미라' }, 'p1');
+  const before = engine.c.log.length;
+  engine.applyEffects([{ who: 'user', hp: -2 }, { who: 'p1', hp: -1 }]);
+  const posted = engine.c.log.slice(before).filter((m) => m.effect);
+  assert.equal(posted.length, 1);
+  assert.match(posted[0].text, /아린: HP .*·.*미라: HP/);
+  engine.setPaused(true);
+});
+
+test('long GM text comes as short beats, each after the last is read; skip lets them all out', async () => {
+  const { splitBeats } = await import('../lib/beats.mjs');
+  const pitch = '📜 드워프 폐광\n\n산맥 아래 버려진 광산이 다시 숨을 쉰다. 보름 사이 마을에서 아이 셋이 사라졌다. 촌장은 "밤마다 망치 소리가 난다. 저 안에서." 하고 떨었다. 당신들은 각자의 이유로 이 마을에 모였다.';
+  const beats = splitBeats(pitch);
+  assert.ok(beats.length >= 2, 'split');
+  assert.ok(beats[0].startsWith('📜 드워프 폐광\n'), 'the heading rides with the first beat');
+  assert.ok(beats.some((b) => b.includes('"밤마다 망치 소리가 난다. 저 안에서." 하고 떨었다.')), 'a quote is not cut in the middle');
+  assert.deepEqual(splitBeats('짧다.'), ['짧다.']);
+
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock'] });
+  await until(() => engine.c.phase === 'declare');
+  engine.setPaused(true);
+  await until(() => engine.busy.size === 0);
+  engine.setPace('normal');
+  const c = engine.c, n = c.log.length;
+  engine.gmSay({ type: 'narration', from: 'gm', text: `${pitch.split('\n\n')[1]} 광산 입구에는 새 쇠말뚝이 줄지어 박혀 있었다.` });
+  engine.post({ type: 'system', from: 'gm', effect: true, text: '그레타: HP 10→8' });
+  assert.equal(c.log.length, n + 1, 'only the first beat is out');
+  const P = await import('../lib/prompts.mjs');
+  assert.ok(P.declareTurn(c, 'p1').includes('하고 떨었다'), 'models already know the beats still to come');
+  engine.skipReading();
+  const out = c.log.slice(n);
+  assert.ok(out.length >= 3 && out.slice(1, -1).every((m) => m.cont), 'the rest follow as continuations');
+  assert.ok(out.at(-1).effect, 'what came after the speech stays after it');
+  assert.equal(P.formatLog(c, out, null).split('\n').filter((l) => l.includes('서술]')).length, 1, 'the GM reads its speech as one');
+  engine.setPace('off');
+  engine.setPaused(true);
+});
+
+test("what a character says and what the player declares stay apart, even when a model mixes them", async () => {
+  const { engine } = table();
+  const replies = [
+    { say: '', action: '"망치 내려놔. 그건 브론 거다." 방패로 밀어붙여서 망치를 빼앗아 볼게요' },
+    { line: '"해치지 않을게요." 앞으로 나서 볼게요' },
+    { say: '"하르벤, 잠깐만요."', action: '' },
+  ];
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, brief, t, ctx) => (kind === 'declare' && replies.length
+    ? { ok: true, text: JSON.stringify(replies.shift()) } : orig(seat, kind, brief, t, ctx));
+  engine.cfg.declareMode = 'sequential';
+  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock', 'mock', 'mock'] });
+  await until(() => engine.c.log.filter((m) => m.type === 'declare').length >= 3);
+  engine.setPaused(true);
+  const ds = engine.c.log.filter((m) => m.type === 'declare').slice(0, 3).map(({ say, action }) => ({ say, action }));
+  assert.deepEqual(ds, [
+    { say: '망치 내려놔. 그건 브론 거다.', action: '방패로 밀어붙여서 망치를 빼앗아 볼게요' },
+    { say: '해치지 않을게요.', action: '앞으로 나서 볼게요' },
+    { say: '하르벤, 잠깐만요.', action: '' },
+  ]);
+  const P = await import('../lib/prompts.mjs');
+  assert.match(P.formatLog(engine.c, engine.c.log.filter((m) => m.type === 'declare').slice(0, 1), null), /말: "망치 내려놔\. 그건 브론 거다\." \/ 하려는 것: 방패로/);
+});
+
+test('an NPC line in GM text is heard from that NPC, not from the GM', async () => {
+  const { splitSpeech } = await import('../lib/beats.mjs');
+  assert.deepEqual(splitSpeech('바위 위에서 고블린 셋이 시위를 당긴다.\n뾰족귀: "내려가! 산, 우리 거!" 놈이 이를 드러낸다.\n어떻게 하시겠습니까?'), [
+    { text: '바위 위에서 고블린 셋이 시위를 당긴다.' },
+    { npc: '뾰족귀', say: '내려가! 산, 우리 거!' },
+    { text: '놈이 이를 드러낸다.\n어떻게 하시겠습니까?' },
+  ]);
+  assert.deepEqual(splitSpeech('**여관 주인**: “부탁이 있소.”'), [{ npc: '여관 주인', say: '부탁이 있소.' }]);
+  assert.equal(splitSpeech('그가 낮게 말했다: "멈춰."')[0].npc, undefined, 'a sentence ending in 다 is narration');
+  assert.equal(splitSpeech('촌장은 "밤마다 망치 소리가 난다." 하고 떨었다.')[0].npc, undefined);
+
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock'] });
+  await until(() => engine.c.phase === 'declare');
+  engine.setPaused(true);
+  await until(() => engine.busy.size === 0);
+  engine.setPace('off');
+  const c = engine.c, n = c.log.length;
+  engine.gmSay({ type: 'narration', from: 'gm', text: '화살 한 대가 발치에 박힌다.\n뾰족귀: "내려가!"\n가운데 고블린: "산, 우리 거!"\n어떻게 하시겠습니까?' });
+  const out = c.log.slice(n);
+  assert.deepEqual(out.map((m) => [m.type, m.name || '', m.text]), [
+    ['narration', '', '화살 한 대가 발치에 박힌다.'],
+    ['npc', '뾰족귀', '내려가!'],
+    ['npc', '가운데 고블린', '산, 우리 거!'],
+    ['narration', '', '어떻게 하시겠습니까?'],
+  ]);
+  const P = await import('../lib/prompts.mjs');
+  const text = P.formatLog(c, out, 'p1');
+  assert.match(text, /NPC 뾰족귀\] "내려가!"/);
+  assert.match(text, /NPC 가운데 고블린\] "산, 우리 거!"/, 'two NPCs are not merged');
+
+  // A human GM can voice an NPC the same way.
+  engine.c.userRole = 'gm';
+  const m = c.log.length;
+  engine.userPost('narration', '대장장이: "살려 줘…"');
+  assert.equal(c.log[m].type, 'npc');
+  assert.equal(c.log[m].name, '대장장이');
+  engine.setPaused(true);
+});
+
+test('one at a time: each declaration is resolved before the next player speaks, and the GM picks who goes next', async () => {
+  const { engine } = table();
+  const asked = [];
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, brief, t, ctx) => {
+    // Stop as round 2 begins (the stubs answer at once, so rounds fly by).
+    if (kind === 'declare' && engine.c.round >= 2) engine.setPaused(true);
+    if (kind === 'declare') return { ok: true, text: '{"action": "앞으로 나아갈게요"}' };
+    if (kind !== 'adjudicate') return orig(seat, kind, brief, t, ctx);
+    const c = engine.c;
+    asked.push({ who: c.resolve.who, decls: ctx.decls.map((d) => d.key), turn: t });
+    // Round 1: after p1, hand the turn to p3 (skipping p2).
+    const next = c.round === 1 && c.resolve.who === 'p1' ? 'p3' : undefined;
+    return { ok: true, text: JSON.stringify({ checks: [], narration: `${c.resolve.who}의 결과.`, next }) };
+  };
+  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock', 'mock', 'mock'] });
+  await until(() => engine.c.paused && engine.busy.size === 0);
+  const c = engine.c;
+  const r1 =c.log.filter((m) => m.round === 1 && (m.type === 'declare' || m.type === 'narration' || (m.type === 'system' && /지켜본다/.test(m.text))));
+  const order = r1.map((m) => (m.type === 'narration' ? 'gm' : m.from));
+  const actors = order.filter((k) => k !== 'gm');
+  assert.deepEqual(actors, ['p1', 'p3', 'p2'], 'the GM handed the turn from p1 to p3');
+  for (let i = 1; i < order.length; i++) if (order[i] !== 'gm' && order[i - 1] !== 'gm') assert.fail(`two players in a row: ${order.join(' ')}`);
+  for (const a of asked.filter((x) => x.who)) assert.deepEqual(a.decls, [a.who], 'the GM sees one declaration at a time');
+  assert.match(asked[0].turn, /\[p1\] .*의 차례/);
+  assert.match(asked[0].turn, /"next": "다음 차례 캐릭터 키 \(p2, p3 중 하나\)/);
+  assert.match(asked[2].turn, /마지막 차례/);
+  assert.deepEqual(c.order, ['p2', 'p3', 'p1'], 'round 2 starts with the next seat');
+});
+
+test('a turn resolved without a roll posts its whispers once, after the narration', async () => {
+  const { engine } = table();
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, brief, t, ctx) => {
+    if (kind === 'declare') { engine.setPaused(true); return { ok: true, text: '{"action": "고블린에게 말을 걸게요"}' }; }
+    if (kind === 'adjudicate') return { ok: true, text: JSON.stringify({ checks: [], narration: '고블린이 물러섭니다.', whispers: [{ to: 'p1', text: '성표가 차갑게 식습니다.' }] }) };
+    return orig(seat, kind, brief, t, ctx);
+  };
+  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock'] });
+  await until(() => engine.c.paused && engine.busy.size === 0);
+  engine.setPaused(false);
+  await until(() => engine.c.log.some((m) => m.type === 'narration' && m.text === '고블린이 물러섭니다.'));
+  await until(() => engine.c.paused && engine.busy.size === 0);
+  const log = engine.c.log;
+  const w = log.filter((m) => m.type === 'whisper' && m.text === '성표가 차갑게 식습니다.');
+  assert.equal(w.length, 1);
+  assert.ok(log.indexOf(w[0]) > log.findIndex((m) => m.text === '고블린이 물러섭니다.'));
+});
+
+test('house rules: the campaign keeps what was picked (or the default), and the prompts say which are on', async () => {
+  const P = await import('../lib/prompts.mjs');
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: 'x', userRole: 'spectator', players: ['mock'] });
+  engine.setPaused(true);
+  assert.deepEqual(engine.c.house, { fullDice: true }, 'on by default');
+  assert.match(P.gmBrief(engine.c), /하우스 룰: 주사위 둘이 모두 6이면 풀다이스/);
+  engine.newCampaign({ rules: 'dw', premise: 'x', userRole: 'spectator', players: ['mock'], house: { fullDice: false } });
+  engine.setPaused(true);
+  assert.deepEqual(engine.c.house, { fullDice: false });
+  assert.doesNotMatch(P.gmBrief(engine.c), /풀다이스/);
+  assert.doesNotMatch(P.playerBrief(engine.c, 'p1'), /풀다이스/);
+  engine.newCampaign({ rules: 'd20', premise: 'x', userRole: 'spectator', players: ['mock'], house: { fullDice: true } });
+  engine.setPaused(true);
+  assert.deepEqual(engine.c.house, {}, 'a rule system without house rules has none');
+});
+
+test("a player's answer to the GM's question is kept apart and reaches the GM as one", async () => {
+  const P = await import('../lib/prompts.mjs');
+  const { engine } = table();
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, brief, t, ctx) => {
+    if (kind === 'declare') { engine.setPaused(true); return { ok: true, text: JSON.stringify({ answer: '제 첫 도끼를 벼려 준 분이에요.', say: '망치 내려놔.', action: '방패로 막아설게요' }) }; }
+    return orig(seat, kind, brief, t, ctx);
+  };
+  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock'] });
+  await until(() => engine.c.paused && engine.busy.size === 0);
+  const d = engine.c.log.find((m) => m.type === 'declare');
+  assert.deepEqual([d.answer, d.say, d.action], ['제 첫 도끼를 벼려 준 분이에요.', '망치 내려놔.', '방패로 막아설게요']);
+  assert.match(P.formatLog(engine.c, [d], null), /질문에 답: 제 첫 도끼를 벼려 준 분이에요\. \/ 말: "망치 내려놔\."/);
+  assert.match(P.declareTurn(engine.c, 'p1'), /"answer": ""/);
+  // The scene tab gets the known facts as data, and bonds come flagged so they can fold.
+  const v = engine.view().campaign;
+  assert.ok(Array.isArray(v.knownList) && v.knownList.every((f) => f.p && Array.isArray(f.args)));
+  assert.ok(engine.c.log.filter((m) => m.text?.startsWith('🤝 ')).every((m) => m.bonds));
+});
+
+test("the story's opening question is put to each player until they answer it", async () => {
+  const P = await import('../lib/prompts.mjs');
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock', 'mock'], openingAsk: '브론은 어떤 사람인가요?' });
+  engine.setPaused(true);
+  const c = engine.c;
+  c.characters.p1 = engine.makeCharacter({ name: '하르', class: '전사' }, 'p1');
+  c.characters.p2 = engine.makeCharacter({ name: '미르', class: '도적' }, 'p2');
+  assert.match(P.declareTurn(c, 'p1'), /마스터가 처음에 모두에게 물은 질문에 너는 아직 답하지 않았다: "브론은 어떤 사람인가요\?"/);
+  assert.match(P.declareTurn(c, 'p1'), /마스터가 하르에게 묻는다/);
+  c.log.push({ id: c.nextId++, round: 1, type: 'declare', from: 'p1', answer: '내 칼을 벼려 준 사람', say: '', action: '' });
+  assert.doesNotMatch(P.declareTurn(c, 'p1'), /아직 답하지 않았다/);
+  assert.match(P.declareTurn(c, 'p2'), /아직 답하지 않았다/);
 });

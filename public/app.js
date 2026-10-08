@@ -87,6 +87,8 @@ let secretsOpen = false;
 let sheetKey = null; // character shown on the sheet page
 let actionKey = ''; // what the action sheet currently shows (keeps selections across redraws)
 let sheetMin = false; // phone: the sheet folded to one line
+let readyAt = 0; // reading pace: when the table moves on (from the server)
+let paceTimer = null;
 const chars = () => state?.characters || {};
 const camp = () => state?.campaign;
 
@@ -117,12 +119,14 @@ function connect() {
   es.addEventListener('init', (e) => {
     const d = JSON.parse(e.data);
     state = d.state;
+    readyAt = state.campaign?.readyAt || 0;
     log = d.log;
     renderAll();
     if (!camp()) openSetup();
   });
   es.addEventListener('state', (e) => {
     state = JSON.parse(e.data);
+    readyAt = state.campaign?.readyAt ?? readyAt;
     renderState();
   });
   es.addEventListener('update', (e) => {
@@ -131,6 +135,11 @@ function connect() {
     if (i >= 0) log[i] = m;
     const html = msgHtml(m, false);
     if (html) $(`#log [data-id="${m.id}"]`)?.replaceWith(htmlToNode(html));
+  });
+  // Reading pace: the server holds the next model call until this time.
+  es.addEventListener('pace', (e) => {
+    readyAt = JSON.parse(e.data).readyAt;
+    renderTurnbar();
   });
   es.addEventListener('msg', (e) => {
     const m = JSON.parse(e.data);
@@ -162,6 +171,16 @@ function avatar(key) {
   const label = key === 'gm' ? gmName().slice(0, 2) : (charName(key) || '?').slice(0, 1);
   return `<span class="avatar${key === 'gm' ? ' gm' : ''}" style="background:${colorOf(key)}" aria-hidden="true">${esc(label)}</span>`;
 }
+// What a move does (Dungeon World), or null.
+function moveInfo(name) {
+  return (name && state?.rulesets?.[camp()?.rules]?.moveInfo?.[name]) || null;
+}
+// An NPC's color comes from its name, so each one looks the same every time it speaks.
+function npcColor(name) {
+  let h = 0;
+  for (const ch of String(name || '')) h = (h * 31 + ch.codePointAt(0)) % 360;
+  return `hsl(${h} 38% 42%)`;
+}
 function tracksOf(ch) {
   return ch.sheet?.tracks || [{ label: 'HP', value: ch.hp, max: ch.maxHp }];
 }
@@ -186,23 +205,25 @@ function rollHtml(m, fresh) {
   const tier = r.tier || OLD_TIER[r.outcome] || 'good';
   const title = r.title || `${r.stat} 판정`;
   const label = r.label || OUTCOME[r.outcome] || '';
-  const target = r.target || (r.dc ? `DC ${r.dc}` : '');
+  // A move with a description (Dungeon World): the card shows its name and the result; what
+  // the move does and what each result means are in the tooltip on the name.
+  const info = moveInfo(r.move);
+  const target = info ? '' : r.target || (r.dc ? `DC ${r.dc}` : '');
   const dice = r.dice.map((d) => `<span class="die">${d}</span>`).join('');
-  const body = r.mod === undefined
+  const nums = r.mod === undefined
     ? `${dice}<span class="muted">${esc(target)}</span>`
-    : `${dice}<span class="muted">${sign(r.mod)}</span><span class="muted">=</span><span class="total">${r.total}</span><span class="muted">${esc(target)}</span>`;
+    : `${dice}<span class="muted">${sign(r.mod)} =</span><span class="total">${r.total}</span>${target ? `<span class="muted">${esc(target)}</span>` : ''}`;
+  const name = info ? `<span class="tipped" tabindex="0" data-tip-move="${esc(r.move)}" data-tier="${tier}">${esc(title)}</span>` : esc(title);
   const lines = [];
-  if (r.text) lines.push(`<div class="rolltext">${esc(r.text)}${r.after ? ` <span class="muted">(${esc(r.after)})</span>` : ''}</div>`);
+  if (r.text && !info) lines.push(`<div class="rolltext">${esc(r.text)}${r.after ? ` <span class="muted">(${esc(r.after)})</span>` : ''}</div>`);
   if (r.diceNote) lines.push(`<div class="rolltext muted">${esc(r.diceNote)}</div>`);
   if (r.selfDamage) lines.push(`<div class="rolltext">받은 피해 <b>${r.selfDamage.total}</b></div>`);
   if (r.damage) lines.push(`<div class="rolltext">피해 ${esc(r.damage.expr)} = <b>${r.damage.total}</b>${r.damage.target ? ` → ${esc(r.damage.target)}` : ''}</div>`);
   if (r.pendingChoice) lines.push('<div class="rolltext muted">선택을 기다리는 중…</div>');
   if (r.chosen?.length) lines.push(`<div class="rolltext">✔ ${r.chosen.map(esc).join(' / ')}</div>`);
   if (r.notes?.length) lines.push(`<div class="rolltext muted">${r.notes.map(esc).join(' · ')}</div>`);
-  if (r.why) lines.push(`<div class="rolltext muted">${esc(r.why)}</div>`);
-  return `<div class="msg" data-id="${m.id}"><section class="roll tier-${tier}${r.who === 'user' ? ' mine' : ''}${fresh ? ' fresh' : ''}" aria-label="판정">
-    <div class="rollhead"><span class="who"><b>${esc(charName(r.who))}</b> · ${esc(title)}</span><span class="res">${esc(label)}</span></div>
-    <div class="rollbody">${body}</div>${lines.join('')}</section></div>`;
+  return `<div class="msg" data-id="${m.id}"><section class="roll tier-${r.house || tier}${r.who === 'user' ? ' mine' : ''}${fresh ? ' fresh' : ''}" aria-label="판정">
+    <div class="rollhead"><span class="who"><b>${esc(charName(r.who))}</b> · ${name}</span><span class="rollnums">${nums}</span><span class="res">${esc(label)}</span></div>${lines.join('')}</section></div>`;
 }
 
 // Whispers reach only their target; the ledger's change notes are the GM's. Spectators,
@@ -218,20 +239,28 @@ function msgHtml(m, fresh) {
   if (hiddenFromMe(m)) return '';
   switch (m.type) {
     case 'whisper':
-      return `<div class="msg whisper"><span class="tag">${esc(gmName())}의 귓속말 → ${esc(m.to === 'user' ? '나' : charName(m.to))}</span>${esc(m.text)}</div>`;
+      return `<div class="msg whisper"><span class="tag">귓속말 → ${esc(m.to === 'user' ? '나' : charName(m.to))}</span> ${esc(m.text)}</div>`;
     case 'narration':
+      if (m.cont) return `<article class="msg narration cont">${esc(m.text)}</article>`;
       return `<article class="msg narration"><span class="tag">${esc(gmName())}${seatOf('gm') ? ` · ${esc(seatOf('gm').label)}` : ''}</span>${esc(m.text)}</article>`;
+    // An NPC's line, voiced by the GM but heard from the NPC.
+    case 'npc':
+      return `<div class="msg npc"><span class="avatar npc" style="background:${npcColor(m.name)}" aria-hidden="true">${esc((m.name || '?').slice(0, 1))}</span><div class="bubble">
+        <div class="who"><b>${esc(m.name)}</b> · NPC</div><div class="say">${esc(m.text)}</div>
+      </div></div>`;
     case 'scene': {
       const [title, ...rest] = m.text.split(' — ');
-      return `<div class="msg scene">${esc(title)}<small>${esc(rest.join(' — '))}</small></div>`;
+      // The title marks the change; the place itself is told by the narration that follows
+      // (and kept in the scene tab).
+      return `<div class="msg scene" title="${esc(rest.join(' — '))}">${esc(title)}</div>`;
     }
     case 'declare': {
       const me = m.from === 'user';
-      const ch = chars()[m.from];
-      const who = me ? `${esc(charName(m.from))}${ch?.concept ? ` · ${esc(ch.concept)}` : ''} · 나` : `<b>${esc(charName(m.from))}</b>${ch?.concept ? ` · ${esc(ch.concept)}` : ''} · ${esc(seatOf(m.from)?.label || '')}`;
+      const who = me ? `${esc(charName(m.from))} · 나` : `<b>${esc(charName(m.from))}</b> · ${esc(seatOf(m.from)?.label || '')}`;
+      const move = m.move ? (moveInfo(m.move) ? `<span class="move tipped" tabindex="0" data-tip-move="${esc(m.move)}">${esc(m.move)}</span>` : `<span class="move">${esc(m.move)}</span>`) : '';
       return `<div class="msg declare${me ? ' me' : ''}">${avatar(m.from)}<div class="bubble">
         <div class="who">${who}</div>
-        ${m.move ? `<span class="move">[${esc(m.move)}]</span>` : ''}${m.say ? `<div class="say">${esc(m.say)}</div>` : ''}
+        ${move}${m.answer ? `<div class="ans"><span class="muted">답</span> ${esc(m.answer)}</div>` : ''}${m.line ? `<div class="line">${esc(m.line)}</div>` : ''}${m.say ? `<div class="say">${esc(m.say)}</div>` : ''}
         ${m.action ? `<div class="act">${esc(m.action)}</div>` : ''}
       </div></div>`;
     }
@@ -240,7 +269,14 @@ function msgHtml(m, fresh) {
     case 'roll':
       return rollHtml(m, fresh);
     default: {
-      const cls = m.ledger ? ' ledger' : m.from === 'gm' ? ' intro' : m.effect ? ' effect' : m.clue ? ' clue' : '';
+      // "도윤의 선택: …" is already on the roll card (✔ …); the line is for the GM's log.
+      if (m.choice) return '';
+      // A character's bonds: one line, opened on demand.
+      if (m.bonds || m.text?.startsWith('🤝 ')) {
+        const [head, ...rest] = m.text.split('\n');
+        return `<details class="msg system bonds"><summary>${esc(head)} <span class="muted">${rest.length}개</span></summary><div>${esc(rest.join('\n'))}</div></details>`;
+      }
+      const cls = m.ledger ? ' ledger' : m.effect ? ' effect' : m.from === 'gm' ? ` intro${m.cont ? ' cont' : ''}` : m.clue ? ' clue' : '';
       return `<div class="msg system${cls}">${esc(m.text)}</div>`;
     }
   }
@@ -293,6 +329,27 @@ function renderParty() {
   }).join('');
 }
 
+// Ledger facts in plain words, grouped (인물(브론, 대장장이) → 인물: "브론 — 대장장이").
+// Clues have their own notebook, and the clue-path bookkeeping is the GM's.
+const FACT_GROUPS = [
+  ['인물', '인물', ([a, b]) => [a, b]], ['장소', '장소', ([a, b]) => [a, b]], ['물건', '물건', ([a, b]) => [a, b]],
+  ['위치', '어디에 있나', ([a, b]) => [a, `${b}에 있다`]], ['소유', '누가 가졌나', ([a, b]) => [b, `${a}이(가) 가졌다`]],
+  ['상태', '상태', ([a, b]) => [a, b]], ['사망', '상태', ([a]) => [a, '죽었다']], ['관계', '관계', ([a, b, r]) => [`${a} ↔ ${b}`, r]],
+  ['목표', '목표', ([a, b]) => [a, b]], ['비밀', '비밀', ([a, b]) => [a, b]], ['사건', '일어난 일', ([, b]) => [b]],
+  ['진실', '알게 된 진실', ([a]) => [a]], ['시계', '다가오는 위협', ([a], f) => [a, `${f.value}/${f.max}`]],
+];
+function factGroups(list) {
+  const out = new Map();
+  for (const [p, group, say] of FACT_GROUPS) {
+    for (const f of list.filter((x) => x.p === p)) {
+      const [head, rest] = say(f.args, f);
+      if (!out.has(group)) out.set(group, []);
+      out.get(group).push(rest ? `<b>${esc(head)}</b> — ${esc(rest)}` : esc(head));
+    }
+  }
+  return [...out];
+}
+
 function renderStory() {
   const c = camp();
   const box = $('#tab-scene');
@@ -300,14 +357,14 @@ function renderStory() {
   // Clues are 단서(이름, 내용) facts the viewer's side knows (plus the old notebook list).
   const known = c.knownFacts || [];
   const clues = [...(c.clues || []), ...known.filter((t) => t.startsWith('단서(')).map((t) => t.slice(3, -1).replace(', ', ' — '))];
-  const facts = known.filter((t) => !t.startsWith('단서('));
+  const facts = factGroups(c.knownList || []);
   box.innerHTML = `
     <p class="storyhead">${esc(c.title || '준비 중')}</p>
     <p class="muted">${esc(c.rulesLabel || '')} · ${esc(c.premise)}${c.tone ? ` · ${esc(c.tone)}` : ''}</p>
     ${c.pitch ? `<div class="pre">${esc(c.pitch)}</div>` : ''}
     ${c.scene?.title ? `<h3>${esc(c.scene.title)}</h3><p>${esc(c.scene.description)}</p>` : ''}
     ${clues.length ? `<h3>단서 수첩</h3><ul class="clues">${clues.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
-    ${facts.length ? `<h3>${c.userRole === 'player' ? '내 캐릭터가 아는 사실' : '모두가 아는 사실'}</h3><ul class="facts">${facts.map((t) => `<li><span>${esc(t)}</span></li>`).join('')}</ul>` : ''}
+    ${facts.length ? `<h3>${c.userRole === 'player' ? '내 캐릭터가 아는 사실' : '모두가 아는 사실'}</h3>${facts.map(([name, items]) => `<div class="factgroup"><h4>${esc(name)}</h4><ul class="facts plain">${items.map((t) => `<li><span>${t}</span></li>`).join('')}</ul></div>`).join('')}` : ''}
     ${c.foes?.length ? `<h3>적</h3>${c.foes.map((f) => `<div class="foe"><div><b>${esc(f.name)}</b> <span class="muted">${[f.armor ? `갑옷 ${f.armor}` : '', f.damage ? `피해 ${esc(f.damage)}` : '', f.attack ? `공격 ${f.attack}` : '', f.dodge ? `회피 ${f.dodge}` : ''].filter(Boolean).join(' · ')}</span></div>
       ${bar({ value: f.hp, max: f.maxHp })}<div class="muted">HP ${f.hp} / ${f.maxHp}${f.note ? ` · ${esc(f.note)}` : ''}</div></div>`).join('')}` : ''}
     ${c.summary ? `<h3>지금까지의 이야기</h3><div class="pre">${esc(c.summary)}</div>` : ''}
@@ -447,7 +504,13 @@ function renderTurnbar() {
     else if (myTurn) parts.push('먼저 선언해도 돼요');
     if (thinking.length) parts.push(`${thinking.map(esc).join(', ')} 생각 중…`);
     if (state.phase === 'gm-wait') parts.push('GM(당신)의 서술을 기다려요. 보내면 다음 라운드가 시작돼요.');
-    if (parts.length) html = `<span class="grow">${parts.join(' · ')}</span>${myTurn ? '<button type="button" class="ghost" data-pass>넘기기</button>' : ''}`;
+    // While the table waits for people to read, offer to skip ahead and to change the pace.
+    const reading = readyAt > Date.now();
+    if (reading) parts.push('읽는 시간');
+    const paceSel = reading ? `<select data-pace aria-label="읽기 속도">${[['slow', '느리게'], ['normal', '보통'], ['fast', '빠르게'], ['off', '기다리지 않기']].map(([k, l]) => `<option value="${k}"${c.pace === k ? ' selected' : ''}>${l}</option>`).join('')}</select>` : '';
+    if (parts.length) html = `<span class="grow">${parts.join(' · ')}</span>${myTurn ? '<button type="button" class="ghost" data-pass>넘기기</button>' : ''}${reading ? `${paceSel}<button type="button" class="ghost" data-skip>▶▶ 빨리 감기</button>` : ''}`;
+    clearTimeout(paceTimer);
+    if (reading) paceTimer = setTimeout(renderTurnbar, readyAt - Date.now() + 50);
   }
   bar.innerHTML = html;
   bar.hidden = !html;
@@ -516,10 +579,10 @@ function renderComposer() {
   if (!modes.some(([m]) => m === mode)) mode = modes[0][0];
   $('#modes').innerHTML = modes.map(([m, l]) => `<button type="button" data-mode="${m}" class="${m === mode ? 'on' : ''}" aria-pressed="${m === mode}" title="${modes.length > 1 ? '눌러서 선언/잡담 바꾸기' : ''}">${l}</button>`).join('');
   const dw = c.rules === 'dw';
-  const gmPh = c.rules === 'dw' ? '장면 서술 · /check 아본 위험 돌파 민첩성' : c.rules === 'coc7' ? '장면 서술 · /check 오필리아 관찰력 어려움' : '장면 서술 · /check 카엘 민첩 15';
+  const gmPh = `장면 서술 · NPC: "대사" · ${c.rules === 'dw' ? '/check 아본 위험 돌파 민첩성' : c.rules === 'coc7' ? '/check 오필리아 관찰력 어려움' : '/check 카엘 민첩 15'}`;
   $('#input').placeholder = mode === 'ooc' ? '테이블 잡담 (플레이어로서)' : role === 'gm' ? gmPh : '“대사” 행동은 그냥 쓰기';
   const moves = dw && role === 'player' && mode === 'declare' ? state.rulesets?.dw?.moves || [] : [];
-  $('#moveChips').innerHTML = moves.map((m) => `<button type="button" data-move="${esc(m.name)}">${esc(m.name)}</button>`).join('');
+  $('#moveChips').innerHTML = moves.map((m) => `<button type="button" data-move="${esc(m.name)}" data-tip-move="${esc(m.name)}">${esc(m.name)}</button>`).join('');
   $('#moveChips').hidden = !moves.length;
 }
 
@@ -619,6 +682,14 @@ function renderRuleLabels() {
   $$('[data-role-label="player"]').forEach((x) => { x.textContent = m.playerName || '플레이어'; });
   $$('[data-role-label="gm"]').forEach((x) => { x.textContent = m.gmName || 'GM'; });
   $('#gmLabel').textContent = m.gmName || 'GM';
+  renderHouseRules();
+}
+
+// House rules the chosen rule system offers (Dungeon World: 풀다이스 · 대실패).
+function renderHouseRules() {
+  const list = ruleMeta()?.houseRules || [];
+  $('#houseBox').innerHTML = list.length ? `<h3 class="sub">하우스 룰</h3>${list.map((h) => `<label class="house"><input type="checkbox" name="house_${h.id}"${h.on ? ' checked' : ''}>
+    <span><b>${esc(h.label)}</b><span class="muted">${esc(h.text)}</span></span></label>`).join('')}` : '';
 }
 
 function updateRole() {
@@ -696,6 +767,7 @@ function submitSetup() {
     rules: f.get('rules'), premise: f.get('premise'), tone: f.get('tone'),
     title: f.get('storyTitle'), opening: f.get('opening'), length: f.get('storyLength'), ...storyExtra,
     userName: f.get('userName'), userRole: role(), gm: f.get('gm'), players,
+    house: Object.fromEntries((ruleMeta()?.houseRules || []).map((h) => [h.id, f.get(`house_${h.id}`) === 'on'])),
   });
   secretsOpen = false;
   log = [];
@@ -758,6 +830,10 @@ $('#turnbar').addEventListener('click', (e) => {
   if (e.target.closest('[data-pass]')) api('/api/pass');
   if (e.target.closest('[data-resume]')) api('/api/pause', { paused: false });
   if (e.target.closest('[data-build]')) openBuilder();
+  if (e.target.closest('[data-skip]')) api('/api/skip');
+});
+$('#turnbar').addEventListener('change', (e) => {
+  if (e.target.matches('[data-pace]')) api('/api/pace', { pace: e.target.value });
 });
 
 $('#sheetScrim').onclick = () => { sheetMin = true; placeSheet(); };
@@ -831,6 +907,87 @@ document.addEventListener('keydown', (e) => {
   else if (document.body.classList.contains('drawer-open')) closeDrawer();
 });
 matchMedia('(max-width: 899px)').addEventListener('change', placeSheet);
+
+// ---------------------------------------------------------------------------
+// Move tooltips: a move's name says only its name. What it does shows on hover (mouse),
+// on a long press (touch), or on focus (keyboard).
+
+const tip = Object.assign(document.createElement('div'), { id: 'tip', role: 'tooltip', hidden: true });
+document.body.append(tip);
+let tipFor = null, tipTimer = null, tipPress = null, tipSwallowClick = false;
+
+function moveTipHtml(name, tier) {
+  const info = moveInfo(name);
+  if (!info) return '';
+  const row = (t, k, text) => (text ? `<div class="tiprow${tier === t ? ' hit' : ''}"><b>${k}</b><span>${esc(text)}</span></div>` : '');
+  const stat = info.stat && !['없음', '인연'].includes(info.stat) ? ` <span class="muted">${esc(info.stat)}</span>` : info.stat === '인연' ? ' <span class="muted">+인연</span>' : '';
+  return `<div class="tiphead"><b>${esc(name)}</b>${stat}</div>
+    ${info.when ? `<div class="tipwhen">${esc(info.when)}</div>` : ''}
+    ${row('good', '10+', info.strong)}${row('mixed', '7~9', info.weak)}${row('bad', '6-', info.miss)}
+    ${info.after ? `<div class="tipwhen">${esc(info.after)}</div>` : ''}`;
+}
+
+function showTip(el) {
+  const html = moveTipHtml(el.dataset.tipMove, el.dataset.tier);
+  if (!html) return;
+  tip.innerHTML = html;
+  tip.hidden = false;
+  tipFor = el;
+  const r = el.getBoundingClientRect();
+  const w = Math.min(320, innerWidth - 32);
+  tip.style.width = `${w}px`;
+  tip.style.left = `${Math.max(16, Math.min(r.left, innerWidth - w - 16))}px`;
+  const h = tip.offsetHeight;
+  tip.style.top = `${r.bottom + 6 + h > innerHeight - 8 ? Math.max(8, r.top - h - 6) : r.bottom + 6}px`;
+}
+function hideTip() {
+  clearTimeout(tipTimer);
+  tip.hidden = true;
+  tipFor = null;
+}
+
+document.addEventListener('pointerover', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  const el = e.target.closest('[data-tip-move]');
+  if (!el || el === tipFor) return;
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(() => showTip(el), 250);
+});
+document.addEventListener('pointerout', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  const el = e.target.closest('[data-tip-move]');
+  if (el && !el.contains(e.relatedTarget)) hideTip();
+});
+// Touch: hold for a moment. Lifting or sliding away before then is an ordinary tap or scroll.
+document.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse') return;
+  tipSwallowClick = false; // a long press that ended without a click leaves nothing to swallow
+  const el = e.target.closest('[data-tip-move]');
+  if (!el) { if (!tip.contains(e.target)) hideTip(); return; }
+  clearTimeout(tipTimer);
+  tipPress = { x: e.clientX, y: e.clientY };
+  tipTimer = setTimeout(() => { tipPress = null; tipSwallowClick = true; showTip(el); }, 450);
+});
+document.addEventListener('pointermove', (e) => {
+  if (!tipPress || Math.hypot(e.clientX - tipPress.x, e.clientY - tipPress.y) < 10) return;
+  clearTimeout(tipTimer);
+  tipPress = null;
+});
+for (const type of ['pointerup', 'pointercancel']) {
+  document.addEventListener(type, (e) => { if (e.pointerType !== 'mouse' && tipPress) { clearTimeout(tipTimer); tipPress = null; } });
+}
+// The tap that ends a long press doesn't also press the button under it (a move chip).
+document.addEventListener('click', (e) => {
+  if (!tipSwallowClick) return;
+  tipSwallowClick = false;
+  e.preventDefault();
+  e.stopPropagation();
+}, true);
+document.addEventListener('contextmenu', (e) => { if (e.target.closest('[data-tip-move]')) e.preventDefault(); });
+document.addEventListener('focusin', (e) => { const el = e.target.closest?.('[data-tip-move]'); if (el) showTip(el); });
+document.addEventListener('focusout', (e) => { if (e.target.closest?.('[data-tip-move]')) hideTip(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip(); });
+$('#log').addEventListener('scroll', () => { if (!tip.hidden) hideTip(); }, { passive: true });
 
 initBuilder({ $, esc, toast, api, sheetHtml, state: () => state, genre: () => storyGenre, rerender: renderState });
 connect();

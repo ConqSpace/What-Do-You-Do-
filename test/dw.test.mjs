@@ -48,6 +48,30 @@ test('2d6 tiers, XP on a miss, the next-roll bonus is spent once', () => {
   setRng(null);
 });
 
+test('results read 성공 / 부분 성공 / 실패; house rule (when on): 6·6 풀다이스, 1·1 대실패 whatever the modifiers', () => {
+  const ch = sheet();
+  script(4, 3); // 7 - 1 (매력 8) = 6
+  assert.equal(dw.resolveCheck({ move: '협상', stat: '매력', bonus: 0 }, ch).label, '실패');
+  script(4, 4); // 8 + 2 = 10
+  assert.equal(dw.resolveCheck({ move: '위험 돌파', stat: '근력', bonus: 0 }, ch).label, '성공');
+  script(6, 6); // 12 - 1 - 3 = 8: without the house rule, just 7~9
+  let r = dw.resolveCheck({ move: '협상', stat: '매력', bonus: -3 }, ch);
+  assert.deepEqual([r.tier, r.house, r.label], ['mixed', undefined, '부분 성공']);
+  const on = { house: { fullDice: true } };
+  script(6, 6); // with it, still 풀다이스
+  r = dw.resolveCheck({ move: '협상', stat: '매력', bonus: -3 }, ch, on);
+  assert.equal(r.total, 8);
+  assert.deepEqual([r.tier, r.house, r.label], ['good', 'crit', '풀다이스']);
+  const xp = ch.xp || 0;
+  script(1, 1); // 2 + 2 + 3 = 7, still 대실패
+  r = dw.resolveCheck({ move: '위험 돌파', stat: '근력', bonus: 3 }, ch, on);
+  assert.equal(r.total, 7);
+  assert.deepEqual([r.tier, r.house, r.label], ['bad', 'fumble', '대실패']);
+  assert.equal(ch.xp, xp + 1, 'a 대실패 is a miss: XP +1');
+  assert.match(dw.rollText(r, '아린'), /대실패/);
+  setRng(null);
+});
+
 test('debilities follow the Korean edition: 무기력 lowers +근', () => {
   const ch = sheet();
   assert.equal(effMod(ch, '근력'), 2);
