@@ -307,8 +307,20 @@ function showNext() {
   const gen = showGen;
   const next = () => { if (gen === showGen) showNext(); };
   while (showQueue.length) {
+    // A beat between one bubble or box and the next. The next sentence of the same narration
+    // joins the box above without one (sentence ends already pause); an NPC line in between
+    // is a bubble of its own and gets its beat.
+    const up = showQueue[0];
+    const joins = up.cont && up.type === lastShownType && up.type !== 'npc';
+    const wait = restUntil - Date.now();
+    if (!skipping && wait > 0 && !joins && up.from !== 'user') {
+      const t = setTimeout(next, wait);
+      shown = { finish() { clearTimeout(t); next(); } };
+      break;
+    }
     const m = showQueue.shift();
     const node = appendMsg(log.find((x) => x.id === m.id) || m, true);
+    if (node) lastShownType = m.type;
     if (!node || skipping || m.from === 'user') continue;
     shown = reveal(node, next);
     if (shown) break;
@@ -333,6 +345,9 @@ function skipAhead() {
 // turn, a little longer at a comma or a sentence's end. The pace is the campaign's (header
 // button); "즉시" or reduced motion shows it at once. Returns { finish } or null.
 const REVEAL_MS = { slow: 55, normal: 34, fast: 22 }; // per character
+const BEAT_MS = { slow: 800, normal: 500, fast: 300 }; // the rest after a speech is revealed
+let restUntil = 0;
+let lastShownType = '';
 function reveal(node, done) {
   const ms = REVEAL_MS[camp()?.pace];
   const parts = [...node.querySelectorAll('.rv')];
@@ -351,6 +366,7 @@ function reveal(node, done) {
       over = true;
       clearTimeout(timer);
       for (const el of parts) el.classList.replace('dim', 'lit');
+      restUntil = Date.now() + (BEAT_MS[camp()?.pace] || 0);
       done();
     },
   };
