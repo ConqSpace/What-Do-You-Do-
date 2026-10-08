@@ -11,7 +11,7 @@ const $$ = (s) => [...document.querySelectorAll(s)];
 const OUTCOME = { critical: '대성공', success: '성공', failure: '실패', fumble: '대실패' };
 const OLD_TIER = { critical: 'crit', success: 'good', failure: 'bad', fumble: 'fumble' };
 const PHASE = { setup: '준비 전', prep: '캠페인 준비 중', declare: '선언', resolve: '판정 중', roll: '주사위 · 선택', 'gm-wait': 'GM 서술 대기', ended: '종료' };
-const STATUS = { thinking: '생각 중', done: '✓ 선언', waiting: '차례 대기', rolling: '굴릴 차례', choosing: '고르는 중', idle: '' };
+const STATUS = { thinking: '생각 중', talking: '말하는 중', done: '✓ 선언', waiting: '차례 대기', rolling: '굴릴 차례', choosing: '고르는 중', idle: '' };
 const DICE = { d20: 'd20', dw: '2d6', coc7: 'd100' };
 // [label, premise, tone, genre (a key of RANDOM)]: the d20 gallery until it has written stories.
 const PRESETS = [
@@ -90,6 +90,10 @@ let sheetMin = false; // phone: the sheet folded to one line
 // How fast new text is revealed (the header button cycles through).
 const PACE_LABEL = { slow: '느리게', normal: '보통', fast: '빠르게', off: '즉시' };
 const PACE_NEXT = { slow: 'normal', normal: 'fast', fast: 'off', off: 'slow' };
+// How much the AI players talk among themselves (reactions, huddles); the header button cycles.
+const CHATTER_LABEL = { normal: '잡담 보통', low: '잡담 적게', off: '잡담 끔' };
+const CHATTER_NEXT = { normal: 'low', low: 'off', off: 'normal' };
+const CHATTER_SHORT = { normal: '잡담', low: '잡담↓', off: '잡담✕' }; // a phone's header is narrow
 const chars = () => state?.characters || {};
 const camp = () => state?.campaign;
 
@@ -266,8 +270,15 @@ function msgHtml(m, fresh) {
         ${m.action ? `<div class="act rv">${esc(m.action)}</div>` : ''}
       </div></div>`;
     }
-    case 'ooc':
-      return `<div class="msg ooc"><b>${esc(m.from === 'user' ? camp()?.userName || '나' : seatOf(m.from)?.label || m.from)}</b> ${esc(m.text)}</div>`;
+    // Table talk: quiet chat lines, apart from the declarations' bubbles. OOC is the player
+    // (the AI's name, its character in brackets); a huddle's in-character line is the character.
+    case 'ooc': {
+      const who = m.from === 'user' ? esc(camp()?.userName || '나')
+        : `${esc(seatOf(m.from)?.label || m.from)}${chars()[m.from] ? `<span class="of">(${esc(charName(m.from))})</span>` : ''}`;
+      return `<div class="msg ooc${m.chat ? ' chatter' : ''}"><b>${who}</b> <span class="rv">${esc(m.text)}</span></div>`;
+    }
+    case 'talk':
+      return `<div class="msg talk chatter"><b style="color:${colorOf(m.from)}">${esc(charName(m.from))}</b> <span class="say rv">${esc(m.text)}</span></div>`;
     case 'roll':
       return rollHtml(m, fresh);
     default: {
@@ -582,6 +593,12 @@ function renderHeader() {
   pace.hidden = !c;
   pace.textContent = PACE_LABEL[c?.pace] || '보통';
   pace.title = `글이 나오는 속도: ${PACE_LABEL[c?.pace] || '보통'} (누르면 바뀜)`;
+  const chat = $('#chatterBtn');
+  chat.hidden = !c;
+  chat.textContent = (mobile() ? CHATTER_SHORT : CHATTER_LABEL)[c?.chatter || 'normal'];
+  chat.title = 'AI 플레이어끼리 주고받는 말(반응, 작전 회의): 보통 · 적게 · 끔 (누르면 바뀜)';
+  // Off: the AI players' talk already in the log is folded away too.
+  document.body.classList.toggle('chatter-off', c?.chatter === 'off');
   const pb = $('#pauseBtn');
   pb.hidden = !c || state.phase === 'ended';
   pb.innerHTML = c?.paused ? ICON.play : ICON.pause;
@@ -615,9 +632,12 @@ function renderTurnbar() {
     if (myTurn && !thinking.length) parts.push(`<b>${esc(charName('user'))}</b>, 어떻게 하시겠습니까?`);
     else if (myTurn) parts.push('먼저 선언해도 돼요');
     if (thinking.length) parts.push(`${thinking.map(esc).join(', ')} 생각 중…`);
+    // A huddle before the round's first declaration: the human may join with an OOC line.
+    if (c.huddle) parts.push(c.userRole === 'player' ? '동료들이 작전 회의 중 · 잡담으로 끼어들 수 있어요' : '플레이어들이 작전 회의 중…');
     if (state.phase === 'gm-wait') parts.push('GM(당신)의 서술을 기다려요. 보내면 다음 라운드가 시작돼요.');
     // The page is still revealing what came in: offer to catch up.
-    if (parts.length || behind) html = `<span class="grow">${parts.join(' · ')}</span>${myTurn ? '<button type="button" class="ghost" data-pass>넘기기</button>' : ''}${skip}`;
+    const join = c.huddle && c.userRole === 'player' && mode !== 'ooc' ? '<button type="button" class="ghost" data-join>끼어들기</button>' : '';
+    if (parts.length || behind) html = `<span class="grow">${parts.join(' · ')}</span>${join}${myTurn ? '<button type="button" class="ghost" data-pass>넘기기</button>' : ''}${skip}`;
   }
   bar.innerHTML = html;
   bar.hidden = !html;
@@ -896,6 +916,7 @@ $('#scrim').onclick = closeDrawer;
 $('#sheetBack').onclick = closeSheet;
 $('#pauseBtn').onclick = () => api('/api/pause', { paused: !camp()?.paused });
 $('#paceBtn').onclick = () => api('/api/pace', { pace: PACE_NEXT[camp()?.pace] || 'normal' });
+$('#chatterBtn').onclick = () => api('/api/chatter', { level: CHATTER_NEXT[camp()?.chatter] || 'low' });
 $('#setupCancel').onclick = () => $('#setup').close();
 $('#stepBack').onclick = () => { step = Math.max(0, step - 1); showStep(); };
 $('#stepNext').onclick = () => {
@@ -939,6 +960,7 @@ $('#turnbar').addEventListener('click', (e) => {
   if (e.target.closest('[data-resume]')) api('/api/pause', { paused: false });
   if (e.target.closest('[data-build]')) openBuilder();
   if (e.target.closest('[data-skip]')) skipAhead();
+  if (e.target.closest('[data-join]')) { mode = 'ooc'; renderComposer(); renderTurnbar(); $('#input').focus(); }
 });
 
 $('#sheetScrim').onclick = () => { sheetMin = true; placeSheet(); };

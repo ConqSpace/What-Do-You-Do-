@@ -28,6 +28,8 @@ const DEFAULT_CFG = {
   autoPauseRounds: 8, // spectator: pause after this many rounds without a word from the human (0 = never)
   mockDelayMs: 700,
   readPace: 'normal', // how fast the page reveals new text: 'slow' | 'normal' | 'fast' | 'off' (at once)
+  chatter: 'normal', // the AI players' table talk (reactions, huddles): 'normal' | 'low' | 'off'
+  huddleSec: 75, // a huddle before a round's first declaration ends after this, however far it got
   backends: {
     claude: { model: 'sonnet' },
     codex: { model: 'gpt-6-sol', effort: 'low' },
@@ -116,6 +118,7 @@ async function handleApi(req, res, url) {
     case '/api/choose': err = engine.userChoose(body.id, body.picks, body.text); break;
     case '/api/pause': engine.setPaused(!!body.paused); break;
     case '/api/pace': err = engine.setPace(body.pace); break;
+    case '/api/chatter': err = engine.setChatter(body.level); break;
     case '/api/builder/draft': err = engine.builderSave(body.draft); break;
     case '/api/builder/roll': err = engine.builderRoll(body.name); break;
     case '/api/builder/finish': err = engine.builderFinish(body); break;

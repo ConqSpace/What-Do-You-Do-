@@ -7,6 +7,8 @@
   "autoPauseRounds": 8,
   "maxInFlight": 3,
   "historyWindow": 40,
+  "chatter": "normal",
+  "huddleSec": 75,
   "turnTimeoutSec": 150,
   "bins": {},
   "backends": {
