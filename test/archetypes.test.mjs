@@ -17,6 +17,9 @@ test('every rule system has ready-made characters with unique ids and names to p
       ids.add(a.id);
       assert.ok(a.icon && a.title && a.concept && a.background, a.id);
       assert.ok((a.items?.length >= 2 || a.gear) && a.names.length >= 2, a.id);
+      assert.equal(a.intro?.length, 2, `${a.id}: two card lines`);
+      for (const l of a.intro) assert.ok(l.length <= 32, `${a.id}: "${l}" is too long for a card line`);
+      if (id === 'd20') assert.ok(a.signature?.name && a.items.includes(a.signature.name), `${a.id}: signature is something it carries`);
     }
   }
 });

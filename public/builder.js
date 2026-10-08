@@ -525,6 +525,13 @@ function redraw() {
 const head = (q, help) => `<h2 class="q">${esc(q)}</h2>${help ? `<p class="muted">${help}</p>` : ''}`;
 const chip = (attrs, label, on) => `<button type="button" class="bchip${on ? ' on' : ''}" aria-pressed="${!!on}" ${attrs}>${esc(label)}</button>`;
 const chipsRow = (html) => `<div class="bchips">${html}</div>`;
+// A choice card in the Slay the Spire shape (see the selection-card-copy skill): name and
+// a few numbers, two lines in the world's voice, one signature ability in its own box.
+// Phones show line 2 and the signature only on the picked card.
+const pcard = ({ attrs, title, nums, intro = [], sig, on }) => `<button type="button" class="bcard pcard${on ? ' on' : ''}" aria-pressed="${!!on}" ${attrs}>
+  <span class="ph"><span class="rn">${title}</span>${nums ? `<span class="pn">${esc(nums)}</span>` : ''}</span>
+  ${intro[0] ? `<span class="rd">${esc(intro[0])}</span>` : ''}${intro[1] ? `<span class="rd rd2">${esc(intro[1])}</span>` : ''}
+  ${sig ? `<span class="sig"><b>${esc(sig.name)}</b><span>${esc(sig.text)}</span></span>` : ''}</button>`;
 const card = (attrs, title, desc, tags, on, extra = '') => `<button type="button" class="bcard${on ? ' on' : ''}" aria-pressed="${!!on}" ${attrs}>
   <span class="rn">${title}</span>${desc ? `<span class="rd">${esc(desc)}</span>` : ''}${tags?.length ? `<span class="rt">${tags.map((x) => `<span>${esc(x)}</span>`).join('')}</span>` : ''}${extra}</button>`;
 const field = (label, bind, value, ph, { area, touch } = {}) => `<label class="bfield">${esc(label)}${area
@@ -546,10 +553,10 @@ const PAGE = {
       for (const a of ordered) if (hand.length < 3 && !hand.includes(a)) hand.push(a);
       d.hand = hand.map((a) => a.id);
     }
-    const top = (a) => Object.entries(a.scores || a.stats || {}).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([k, v]) => `${k} ${rules() === 'd20' ? sg(v) : v}`);
     return head('어떻게 만들까요?', '처음이라면 빠른 시작 카드를 골라 보세요. 나중에 페이지를 넘기며 하나씩 고칠 수 있어요.')
       + '<h3 class="sub">빠른 시작</h3>'
-      + `<div class="bcards">${d.hand.map(cardOf).map((a) => card(`data-pick="start" data-val="${a.id}"`, `${a.icon} ${esc(a.title)}`, a.concept, [a.class || a.occupation, ...top(a)].filter(Boolean), d.start === a.id)).join('')}</div>`
+      + `<div class="bcards">${d.hand.map(cardOf).map((a) => pcard({ attrs: `data-pick="start" data-val="${a.id}"`, title: `${a.icon} ${esc(a.title)}`,
+        nums: quickNums(a), intro: a.intro, sig: quickSig(a), on: d.start === a.id })).join('')}</div>`
       + `<div class="bchips"><button type="button" class="bchip dice" data-act="deal">🎲 다른 카드</button>${cardOf(d.start) ? '<button type="button" class="bchip" data-act="review">이대로 확인으로 →</button>' : ''}</div>`
       + '<h3 class="sub">직접</h3><div class="bcards">'
       + card('data-pick="start" data-val="scratch"', '✍ 처음부터 만들기', `${pages().length - 2}단계로 하나씩 골라요. 단계마다 추천값이 있어서 "다음"만 눌러도 돼요.`, [], d.start === 'scratch')
@@ -560,8 +567,8 @@ const PAGE = {
 
   class() {
     return head('어떤 직업으로 할까요?', '직업은 캐릭터가 잘하는 일과, 처음부터 쓸 수 있는 특별한 액션을 정해요. 일행끼리는 서로 다른 직업을 골라요.')
-      + `<div class="bcards">${info.classes.map((c) => card(`data-pick="class" data-val="${esc(c.name)}"`, esc(c.name), c.play,
-        [`HP ${c.hp}+체력`, `기본 피해 ${c.damage}`], d.class === c.name)).join('')}</div>`;
+      + `<div class="bcards">${info.classes.map((c) => pcard({ attrs: `data-pick="class" data-val="${esc(c.name)}"`, title: `${c.icon} ${esc(c.name)}`,
+        nums: `HP ${c.hp}+체력 · 피해 ${c.damage}`, intro: c.intro, sig: c.signature, on: d.class === c.name })).join('')}</div>`;
   },
 
   stats() {
@@ -689,8 +696,9 @@ const PAGE = {
   occupation() {
     const rec = recommended().slice(0, 3);
     return head('직업이 무엇인가요?', '직업은 잘하는 기능 8개와 재산(신용)의 범위를 정해요. 특성치에 어울리는 직업에 "추천"이 붙어요.')
-      + `<div class="bcards">${info.occupations.map((o) => card(`data-pick="occupation" data-val="${esc(o.name)}"`, `${esc(o.name)}${rec.includes(o.name) ? ' <span class="brec">추천</span>' : ''}`, o.blurb,
-        [`신용 ${o.credit[0]}~${o.credit[1]}`, ...o.skills.slice(0, 4)], d.occupation === o.name)).join('')}</div>`;
+      + `<div class="bcards">${info.occupations.map((o) => pcard({ attrs: `data-pick="occupation" data-val="${esc(o.name)}"`,
+        title: `${o.icon} ${esc(o.name)}${rec.includes(o.name) ? ' <span class="brec">추천</span>' : ''}`,
+        nums: `신용 ${o.credit[0]}~${o.credit[1]}`, intro: o.intro, sig: o.signature, on: d.occupation === o.name })).join('')}</div>`;
   },
 
   occSkills() {
@@ -760,6 +768,22 @@ const PAGE = {
       + chipsRow(list.map((p) => `<button type="button" class="bchip" data-act="go" data-page="${p}">${TITLE[p]} 고치기</button>`).join(''));
   },
 };
+
+// A quick-start card's numbers and signature: what its class or occupation gives (d20 cards
+// carry their own signature).
+function quickNums(a) {
+  if (a.class) {
+    const c = info.classes.find((x) => x.name === a.class);
+    return `${a.class} · HP ${c ? c.hp + a.scores.체력 : '?'}`;
+  }
+  if (a.occupation) return `${a.occupation} · HP ${Math.floor((a.stats.건강 + a.stats.크기) / 10)} · 이성 ${a.stats.정신}`;
+  return `HP ${10 + 2 * (a.stats?.체력 || 0)}`;
+}
+function quickSig(a) {
+  if (a.signature) return a.signature;
+  if (a.class) return info.classes.find((x) => x.name === a.class)?.signature;
+  return info.occupations?.find((x) => x.name === a.occupation)?.signature;
+}
 
 function skillRow(pool, n, note = '') {
   const pts = Number(d[pool]?.[n]) || 0;
