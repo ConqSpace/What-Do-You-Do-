@@ -26,6 +26,14 @@ const twoLines = (intro, who) => {
   for (const l of intro) assert.ok(l.length <= 32, `${who}: "${l}" is too long for a card line`);
 };
 
+test('rule cards on the new-campaign screen: two lines and a signature rule', () => {
+  for (const r of Object.values(RULESETS)) {
+    const m = r.meta();
+    twoLines(m.intro, m.id);
+    assert.ok(m.icon && m.signature?.name && m.signature?.text, m.id);
+  }
+});
+
 test('Dungeon World class cards: a signature only that class has', () => {
   const b = builderInfo('dw');
   const sigs = b.classes.map((c) => c.signature.name);

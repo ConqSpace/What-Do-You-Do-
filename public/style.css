@@ -511,8 +511,10 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
 .pcard .sig { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line2); background: var(--surface); }
 .pcard .sig b { font-size: 13px; color: var(--accent); }
 .pcard .sig span { font-size: 12.5px; color: color-mix(in srgb, var(--text) 85%, var(--bg)); }
+.rulecard .rc.pcard { flex: 1; min-width: 0; }
 @media (max-width: 899px) {
   .pcard:not(.on) .rd2, .pcard:not(.on) .sig { display: none; }
+  .rulecard:not(:has(input:checked)) .rd2, .rulecard:not(:has(input:checked)) .sig { display: none; }
 }
 .brec { font-size: 11px; padding: 1px 6px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); vertical-align: 2px; }
 .bchips, .bseg { display: flex; flex-wrap: wrap; gap: 6px; }

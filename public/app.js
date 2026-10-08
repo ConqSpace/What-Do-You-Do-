@@ -574,7 +574,9 @@ function openSetup() {
   if (camp()?.rules) setupRules = camp().rules;
   if (!rs.some((r) => r.id === setupRules)) setupRules = rs.find((r) => r.id === 'dw')?.id || rs[0]?.id || 'd20';
   $('#rulesSeg').innerHTML = '<legend class="sr">룰 시스템</legend>' + rs.map((r) => `<label class="rulecard"><input type="radio" name="rules" value="${r.id}"${r.id === setupRules ? ' checked' : ''}>
-    <span class="rc"><span class="rn">${esc(r.label)}</span><span class="rd">${esc(r.blurb || '')}</span><span class="rt">${(r.tags || []).map((t) => `<span>${esc(t)}</span>`).join('')}</span></span></label>`).join('');
+    <span class="rc pcard"><span class="ph"><span class="rn">${r.icon || ''} ${esc(r.label)}</span><span class="pn">${esc((r.tags || []).join(' · '))}</span></span>
+    ${(r.intro || []).map((l, i) => `<span class="rd${i ? ' rd2' : ''}">${esc(l)}</span>`).join('')}
+    ${r.signature ? `<span class="sig"><b>${esc(r.signature.name)}</b><span>${esc(r.signature.text)}</span></span>` : ''}</span></label>`).join('');
   step = 0;
   renderRuleLabels();
   updateRole();
