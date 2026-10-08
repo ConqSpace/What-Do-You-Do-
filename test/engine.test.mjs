@@ -412,3 +412,32 @@ test('a story from the gallery: its title stays, and the GM gets its first scene
   assert.equal(e2.c.length, '', 'unknown lengths are dropped');
   e2.setPaused(true);
 });
+
+test('a Dungeon World story hands the GM its front and the question to open with', async () => {
+  const { engine } = table();
+  const turns = {};
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, brief, t, ctx) => {
+    turns[kind] = t;
+    return orig(seat, kind, brief, t, ctx);
+  };
+  engine.newCampaign({
+    rules: 'dw', premise: '고블린이 대장장이를 끌고 갔다', userRole: 'spectator', players: ['mock'],
+    opening: '고블린 정찰병 셋이 활을 겨눈다', openingAsk: '대장장이는 여러분에게 어떤 사람인가요?',
+    questions: ['대장장이는 살아서 돌아올 수 있을까?'],
+    front: { dangers: [{ name: '붉은이빨 고블린 부족', type: '괴물 떼', motive: '새 보금자리를 찾는다', portents: ['마을을 습격한다', '마을로 몰려온다'], doom: { text: '마을이 넘어간다', type: '압제' } }, { name: 'x'.repeat(200) }], cast: ['대장장이 브론'], blank: '깨어난 것의 정체' },
+  });
+  assert.equal(engine.c.front.dangers[1].name.length, 60, 'front text is capped');
+  await until(() => turns.opening);
+  assert.match(turns.worldbuild, /위험요소: 붉은이빨 고블린 부족 \(괴물 떼 · 동기: 새 보금자리를 찾는다\)/);
+  assert.match(turns.worldbuild, /흉조\(내버려 두면 이 순서로 벌어진다\): 마을을 습격한다 → 마을로 몰려온다/);
+  assert.match(turns.worldbuild, /빈칸\(정하지 마\. 플레이하며 정한다\): 깨어난 것의 정체/);
+  assert.match(turns.worldbuild, /이야기가 답할 질문.*대장장이는 살아서 돌아올 수 있을까\?/);
+  assert.match(turns.opening, /이 질문을 던지고.*대장장이는 여러분에게 어떤 사람인가요\?/);
+  engine.setPaused(true);
+
+  const { engine: e2 } = table();
+  e2.newCampaign({ rules: 'dw', premise: 'x', front: { dangers: [] }, userRole: 'spectator', players: ['mock'] });
+  assert.equal(e2.c.front, null, 'a front without dangers is dropped');
+  e2.setPaused(true);
+});

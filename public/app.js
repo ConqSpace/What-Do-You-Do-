@@ -552,6 +552,7 @@ let setupRules = 'dw';
 let storyGenre = null; // genre of the premise when it came from a story or the 🎲 (the builder's d20 cards follow it)
 let storyPick = null; // story id, or 'gm' / 'random' / 'custom'
 let rolled = null; // the 🎲 story on screen
+let storyExtra = {}; // what only the GM gets from the picked story (front, questions, opening question)
 const form = () => $('#setupForm');
 const ruleMeta = () => state?.rulesets?.[setupRules] || state?.rulesets?.d20;
 const role = () => new FormData(form()).get('userRole');
@@ -632,7 +633,7 @@ function updateRole() {
 function storiesFor(rules) {
   if (STORIES[rules]) return STORIES[rules];
   return PRESETS.map(([label, premise, tone, genre], i) => ({ id: `preset-${i}`, icon: '📖', row: 'genres', genre, title: label, kind: label,
-    synopsis: premise, premise, tone, length: 'short' })).filter((x) => RANDOM[x.genre]?.rules.includes(rules));
+    situation: premise, tone, length: 'short' })).filter((x) => RANDOM[x.genre]?.rules.includes(rules));
 }
 
 function renderStories() {
@@ -653,12 +654,13 @@ function renderHero() {
   const start = STARTS.find((x) => x.id === storyPick);
   const x = st || (storyPick === 'random' && rolled) || start;
   const meta = st ? [st.kind, LENGTH[st.length], st.beginner ? '처음이라면 추천' : ''] : storyPick === 'random' ? ['즉석 조합', LENGTH.short] : [];
-  const synopsis = storyPick === 'random' ? rolled?.premise : x.synopsis;
+  const situation = storyPick === 'random' ? rolled?.premise : x.situation;
   $('#storyHero').innerHTML = `<div class="shart r-${st ? st.row : 'start'}" aria-hidden="true">${(st || start).icon}</div>
     <div class="shtext"><div class="shtitle">${esc(st ? st.title : start.title)}</div>
     ${meta.length ? `<div class="shmeta">${meta.filter(Boolean).map((m, i) => `<span class="${i === 2 ? 'brec' : ''}">${esc(m)}</span>`).join('')}</div>` : ''}
-    <p class="shsyn">${esc(synopsis || '')}</p>
-    ${st?.scene ? `<div class="shep"><b>첫 장면 · ${esc(st.scene.title)}</b><span>${esc(st.scene.text)}</span></div>` : ''}
+    <p class="shsyn">${esc(situation || '')}</p>
+    ${st?.questions ? `<div class="shq"><b>이야기가 답할 질문</b><ul>${st.questions.map((q) => `<li>${esc(q)}</li>`).join('')}</ul></div>` : ''}
+    ${st?.scene ? `<div class="shep"><b>첫 장면 · ${esc(st.scene.title)}</b><span>${esc(st.scene.text)}</span>${st.scene.ask ? `<span class="shask">${esc(ruleMeta()?.gmName || 'GM')}${/[가-힣]$/.test(ruleMeta()?.gmName || 'GM') ? '가' : '이'} 먼저 물을 것: "${esc(st.scene.ask)}"</span>` : ''}</div>` : ''}
     ${st?.tags ? `<div class="shtags">이 이야기는: ${st.tags.map(esc).join(' · ')}</div>` : ''}
     ${storyPick === 'random' ? '<div class="bchips"><button type="button" class="bchip dice" data-reroll>🎲 다시 뽑기</button></div>' : ''}
     ${storyPick === 'custom' ? '<p class="muted">아래 "직접 고치기"에 전제를 적어 주세요.</p>' : ''}</div>`;
@@ -669,8 +671,10 @@ function pickStory(id) {
   const f = form();
   const set = (o) => { f.premise.value = o.premise || ''; f.tone.value = o.tone || ''; f.opening.value = o.opening || ''; $('#storyLength').value = o.length ?? 'short'; $('#storyTitle').value = o.title || ''; };
   const st = storiesFor(setupRules).find((x) => x.id === id);
+  // A Dungeon World story also hands the GM its front, its questions and what to ask first.
+  storyExtra = st?.front ? { front: st.front, questions: st.questions, openingAsk: st.scene?.ask } : {};
   if (st) {
-    set({ premise: st.premise, tone: st.tone, opening: st.scene?.text, length: st.length, title: st.scene ? st.title : '' });
+    set({ premise: st.situation, tone: st.tone, opening: st.scene?.text, length: st.length, title: st.scene ? st.title : '' });
     storyGenre = st.genre;
   } else if (id === 'random') {
     rolled = randomStory(setupRules, f.premise.value);
@@ -690,7 +694,7 @@ function submitSetup() {
   saveName(String(f.get('userName') || '').trim());
   api('/api/campaign', {
     rules: f.get('rules'), premise: f.get('premise'), tone: f.get('tone'),
-    title: f.get('storyTitle'), opening: f.get('opening'), length: f.get('storyLength'),
+    title: f.get('storyTitle'), opening: f.get('opening'), length: f.get('storyLength'), ...storyExtra,
     userName: f.get('userName'), userRole: role(), gm: f.get('gm'), players,
   });
   secretsOpen = false;
