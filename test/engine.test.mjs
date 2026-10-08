@@ -859,6 +859,8 @@ test('positions in the ledger: a defend from across the room goes back to the GM
     if (kind !== 'adjudicate') return orig(seat, kind, brief, t, ctx);
     turns.push(t);
     const retry = t.includes('서버가 받지 않은 판정');
+    // Stop the table once this roll goes out, before the next player's turn comes round.
+    if (retry) engine.setPaused(true);
     return { ok: true, text: JSON.stringify({ checks: [retry ? { who: 'p2', move: '위험 돌파', stat: '민첩성', why: '웅덩이 건너기' } : { who: 'p2', move: '방어', target: 'p1', why: '탄 지키기' }] }) };
   };
   c.round = 1;
