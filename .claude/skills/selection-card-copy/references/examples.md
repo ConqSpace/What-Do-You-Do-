@@ -34,6 +34,43 @@ Why the signatures: each is the one starting 액션 no other class shares. 사�
 - Before: "안수치료: 환자와 피부 접촉을 하고 그 건강을 위해 기도하면 +매 판정. 10+ 1d8 치유 또는 질병 치료, 7~9 피해나 질병이 옮아 옴."
 - After: "안수치료: 손을 얹고 기도하면 상처를 치유하거나 병을 고칩니다." (the 핵심 액션 page has the rest)
 
+## Dungeon World 직업, reworded for spoken Korean (current)
+
+The table above was the first approved set; these lines replaced its stiffer ones after a read-aloud pass.
+
+| 직업 | 소개 (두 줄) |
+|---|---|
+| 전사 | 갑옷과 칼 한 자루로 살아남은 싸움꾼입니다. 싸움이 끝나면 마지막까지 서 있는 건 늘 당신입니다. |
+| 성기사 | 신의 이름으로 명령하는 기사입니다. 한번 맹세한 일은 무슨 일이 있어도 끝까지 해냅니다. |
+| 사냥꾼 | 숲과 들판에서 살아가는 추적자입니다. 한번 쫓기 시작한 흔적은 놓치지 않습니다. |
+| 도적 | 자물쇠와 덫과 독을 다루는 뒷골목 사람입니다. 정면으로 싸우는 건 바보나 하는 짓이라고 생각합니다. |
+| 마법사 | 읽으면 안 되는 책까지 읽어 버린 학자입니다. 몸은 가장 약하지만, 할 수 있는 일은 가장 많습니다. |
+| 사제 | 신의 목소리를 전하는 사람입니다. 동료가 쓰러지면 누구보다 먼저 달려갑니다. |
+| 드루이드 | 숲의 신령들 손에 자란 아이입니다. 짐승으로 변해 자기 땅을 누빕니다. |
+| 음유시인 | 노래 한 곡이면 어디서든 환영받는 이야기꾼입니다. 전설이 어떻게 끝나는지 직접 보려고 길을 나섰습니다. |
+
+## Story cards: from a speech to a title page
+
+Three drafts of the same story, and what was wrong with each.
+
+1. Card copy, "~습니다": "국경 마을에서 밤마다 종이 울리고, 한 사람씩 사라집니다. 영주는 입을 닫았고, 마을 사람들은 당신들만 바라봅니다." Reads like an announcement; "당신들" is translated English.
+2. Grand present tense: "국경 마을에 밤마다 종이 울리고, 날이 밝으면 누군가 사라진다. 영주는 입을 닫았고, 모험가들은 종탑에 오른다." Still a speech: it paints a scene but never says why they go in, what turns, or what is at stake. "입을 닫았고" is a stock literary phrase.
+3. The title page (current):
+
+```
+잿빛 종탑의 비밀
+판타지 · 짧은 모험 · 처음이라면 추천
+
+밤마다 사람이 하나씩 사라지는 국경 마을. 모험가들이 그 이유를 찾아 마을에 들어선다.
+하지만 영주는 아무것도 말해 주지 않고, 주민들은 뭔가 숨기는 눈치다.
+종탑에 오르기 전에, 누구를 믿을지 정해야 한다.
+
+1화 · 주인 없는 신발
+첫날 밤, 종이 울린다. 아침이 되자 종탑 아래 남은 건 작은 신발 한 짝. 신발 주인은 어디로 갔을까.
+
+이 이야기는: 으스스한 · 수수께끼 · 조사 · 대화
+```
+
 ## Rule system cards (the shape for a whole game)
 
 A rule card sells the kind of story, not the dice. The dice go in the numbers.
