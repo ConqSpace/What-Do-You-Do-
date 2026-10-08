@@ -442,7 +442,7 @@ test('a Dungeon World story hands the GM its front and the question to open with
   e2.setPaused(true);
 });
 
-test('reading pace: the next call waits until people could read what came in; skip moves on', async () => {
+test("the pace is the page's to keep: messages go out at once, and the campaign remembers the reveal speed", async () => {
   const { engine } = table();
   engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock', 'mock'] });
   await until(() => engine.c.phase === 'declare');
@@ -450,27 +450,17 @@ test('reading pace: the next call waits until people could read what came in; sk
   await until(() => c.log.some((m) => m.type === 'declare'));
   const d = c.log.find((m) => m.type === 'declare');
   assert.ok(d.action && !d.line, 'AI players declare what they mean to do');
-
-  // Pause, turn reading on, and let a narration come in: replies wait until it's read.
   engine.setPaused(true);
   await until(() => engine.busy.size === 0);
-  assert.equal(engine.setPace('normal'), null);
-  assert.equal(engine.view().campaign.pace, 'normal');
-  engine.post({ type: 'narration', from: 'gm', text: '가'.repeat(80) });
-  assert.ok(engine.readyAt - Date.now() > 8000, '80 characters take about ten seconds to read');
-  const n = c.log.length;
-  engine.setPaused(false);
-  await until(() => engine.busy.size > 0);
-  await new Promise((r) => setTimeout(r, 100));
-  assert.equal(c.log.length, n, 'a model may think meanwhile, but its reply waits');
-  engine.post({ type: 'declare', from: 'user', action: '내 말은 기다리지 않는다' });
-  assert.ok(engine.readyAt - Date.now() < 10500, "the human's own words add no reading time");
-  engine.skipReading();
-  assert.ok(engine.readyAt <= Date.now());
-  await until(() => c.log.length > n + 1);
+  assert.equal(engine.view().campaign.pace, 'normal', 'config.readPace or normal');
+  assert.equal(engine.setPace('fast'), null);
+  assert.equal(engine.view().campaign.pace, 'fast');
   assert.equal(engine.setPace('warp'), '모르는 속도예요');
-  engine.setPace('off');
-  assert.equal(engine.readyAt, 0, 'off: no waiting');
+  // A long narration doesn't hold back what comes next.
+  const n = c.log.length;
+  engine.post({ type: 'narration', from: 'gm', text: '가'.repeat(400) });
+  engine.setPaused(false);
+  await until(() => c.log.length > n + 1);
   engine.setPaused(true);
 });
 
@@ -486,7 +476,7 @@ test('effects from one GM reply come as one line', () => {
   engine.setPaused(true);
 });
 
-test('long GM text comes as short beats, each after the last is read; skip lets them all out', async () => {
+test('long GM text comes as short beats, all at once and in order; the GM reads its speech as one', async () => {
   const { splitBeats } = await import('../lib/beats.mjs');
   const pitch = '📜 드워프 폐광\n\n산맥 아래 버려진 광산이 다시 숨을 쉰다. 보름 사이 마을에서 아이 셋이 사라졌다. 촌장은 "밤마다 망치 소리가 난다. 저 안에서." 하고 떨었다. 당신들은 각자의 이유로 이 마을에 모였다.';
   const beats = splitBeats(pitch);
@@ -500,20 +490,14 @@ test('long GM text comes as short beats, each after the last is read; skip lets 
   await until(() => engine.c.phase === 'declare');
   engine.setPaused(true);
   await until(() => engine.busy.size === 0);
-  engine.setPace('normal');
   const c = engine.c, n = c.log.length;
   engine.gmSay({ type: 'narration', from: 'gm', text: `${pitch.split('\n\n')[1]} 광산 입구에는 새 쇠말뚝이 줄지어 박혀 있었다.` });
   engine.post({ type: 'system', from: 'gm', effect: true, text: '그레타: HP 10→8' });
-  assert.equal(c.log.length, n + 1, 'only the first beat is out');
-  const P = await import('../lib/prompts.mjs');
-  assert.ok(P.declareTurn(c, 'p1').includes('하고 떨었다'), 'models already know the beats still to come');
-  engine.skipReading();
   const out = c.log.slice(n);
-  assert.ok(out.length >= 3 && out.slice(1, -1).every((m) => m.cont), 'the rest follow as continuations');
+  assert.ok(out.length >= 3 && out.slice(1, -1).every((m) => m.cont), 'the beats follow as continuations, at once');
   assert.ok(out.at(-1).effect, 'what came after the speech stays after it');
+  const P = await import('../lib/prompts.mjs');
   assert.equal(P.formatLog(c, out, null).split('\n').filter((l) => l.includes('서술]')).length, 1, 'the GM reads its speech as one');
-  engine.setPace('off');
-  engine.setPaused(true);
 });
 
 test("what a character says and what the player declares stay apart, even when a model mixes them", async () => {

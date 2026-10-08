@@ -87,8 +87,9 @@ let secretsOpen = false;
 let sheetKey = null; // character shown on the sheet page
 let actionKey = ''; // what the action sheet currently shows (keeps selections across redraws)
 let sheetMin = false; // phone: the sheet folded to one line
-let readyAt = 0; // reading pace: when the table moves on (from the server)
-let paceTimer = null;
+// How fast new text is revealed (the header button cycles through).
+const PACE_LABEL = { slow: '느리게', normal: '보통', fast: '빠르게', off: '즉시' };
+const PACE_NEXT = { slow: 'normal', normal: 'fast', fast: 'off', off: 'slow' };
 const chars = () => state?.characters || {};
 const camp = () => state?.campaign;
 
@@ -119,14 +120,12 @@ function connect() {
   es.addEventListener('init', (e) => {
     const d = JSON.parse(e.data);
     state = d.state;
-    readyAt = state.campaign?.readyAt || 0;
     log = d.log;
     renderAll();
     if (!camp()) openSetup();
   });
   es.addEventListener('state', (e) => {
     state = JSON.parse(e.data);
-    readyAt = state.campaign?.readyAt ?? readyAt;
     renderState();
   });
   es.addEventListener('update', (e) => {
@@ -136,15 +135,10 @@ function connect() {
     const html = msgHtml(m, false);
     if (html) $(`#log [data-id="${m.id}"]`)?.replaceWith(htmlToNode(html));
   });
-  // Reading pace: the server holds the next model call until this time.
-  es.addEventListener('pace', (e) => {
-    readyAt = JSON.parse(e.data).readyAt;
-    renderTurnbar();
-  });
   es.addEventListener('msg', (e) => {
     const m = JSON.parse(e.data);
     log.push(m);
-    appendMsg(m, true);
+    enqueue(m);
   });
   es.onerror = () => { $('#phasePill').textContent = '연결 끊김… 다시 연결 중'; };
 }
@@ -287,26 +281,62 @@ function appendMsg(m, fresh) {
   const near = box.scrollHeight - box.scrollTop - box.clientHeight < 160;
   box.querySelector('.empty')?.remove();
   const html = msgHtml(m, fresh);
-  if (!html) return;
+  if (!html) return null;
   box.insertAdjacentHTML('beforeend', html);
-  if (fresh && m.from !== 'user') reveal(box.lastElementChild);
   if (near || m.from === 'user') box.scrollTop = box.scrollHeight;
+  return box.lastElementChild;
 }
 
-// New speech comes in 어절 by 어절: the whole text sits dim first, so the eye can read ahead,
-// and each 어절 brightens in turn, a little longer at a comma or a sentence's end. The pace
-// follows the reading pace; "기다리지 않기" or reduced motion shows it at once.
-const REVEAL_MS = { slow: 55, normal: 34, fast: 22 }; // per character
-const revealing = new Set();
-let skippedAt = 0; // "빨리 감기": the beats it lets out arrive right after, shown at once
-function finishReveals() {
-  for (const r of revealing) r.finish();
+// New messages are shown one after another: each waits until the text before it has been
+// revealed. The server never waits for people to read; the page keeps the pace, and the
+// models may run ahead of it ("▶▶ 빨리 감기" catches up).
+const showQueue = [];
+let shown = null; // what is being shown now: { finish() }
+let skipping = false;
+let showGen = 0; // bumps when the log is redrawn; a reveal from before stops there
+
+function enqueue(m) {
+  if (m.from === 'user') skipAhead(); // your own words: what came before is shown at once
+  showQueue.push(m);
+  if (!shown) showNext();
+  renderTurnbar();
 }
-function reveal(node) {
+
+function showNext() {
+  shown = null;
+  const gen = showGen;
+  const next = () => { if (gen === showGen) showNext(); };
+  while (showQueue.length) {
+    const m = showQueue.shift();
+    const node = appendMsg(log.find((x) => x.id === m.id) || m, true);
+    if (!node || skipping || m.from === 'user') continue;
+    shown = reveal(node, next);
+    if (shown) break;
+    // A roll card gets a moment to land before what follows.
+    if (m.type === 'roll' && REVEAL_MS[camp()?.pace]) {
+      const t = setTimeout(next, 600);
+      shown = { finish() { clearTimeout(t); next(); } };
+      break;
+    }
+  }
+  renderTurnbar();
+}
+
+function skipAhead() {
+  skipping = true;
+  if (shown) shown.finish();
+  else showNext();
+  skipping = false;
+}
+
+// The text of a message sits dim first, so the eye can read ahead, and each 어절 brightens in
+// turn, a little longer at a comma or a sentence's end. The pace is the campaign's (header
+// button); "즉시" or reduced motion shows it at once. Returns { finish } or null.
+const REVEAL_MS = { slow: 55, normal: 34, fast: 22 }; // per character
+function reveal(node, done) {
   const ms = REVEAL_MS[camp()?.pace];
   const parts = [...node.querySelectorAll('.rv')];
-  if (!ms || !parts.length || Date.now() - skippedAt < 1500 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  finishReveals(); // what came before is shown in full
+  if (!ms || !parts.length || matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
   const words = [];
   for (const el of parts) {
     // Split on spaces only; line breaks stay with their 어절 (the text is pre-wrap).
@@ -314,17 +344,25 @@ function reveal(node) {
     el.classList.add('dim');
     words.push(...el.querySelectorAll('.w'));
   }
-  const r = { timer: null, i: 0 };
-  r.finish = () => { clearTimeout(r.timer); for (const el of parts) el.classList.replace('dim', 'lit'); revealing.delete(r); };
+  let timer = null, i = 0, over = false;
+  const r = {
+    finish() {
+      if (over) return;
+      over = true;
+      clearTimeout(timer);
+      for (const el of parts) el.classList.replace('dim', 'lit');
+      done();
+    },
+  };
   const step = () => {
-    const w = words[r.i++];
+    const w = words[i++];
     if (!w) return r.finish();
     w.classList.add('on');
     const t = w.textContent;
-    r.timer = setTimeout(step, ms * t.length * 0.9 + 60 + (/[.!?…]["”']?$/.test(t) ? 260 : /,$/.test(t) ? 140 : 0));
+    timer = setTimeout(step, ms * t.length * 0.9 + 60 + (/[.!?…]["”']?$/.test(t) ? 260 : /,$/.test(t) ? 140 : 0));
   };
-  revealing.add(r);
-  r.timer = setTimeout(step, 120);
+  timer = setTimeout(step, 120);
+  return r;
 }
 
 function renderLog() {
@@ -334,6 +372,10 @@ function renderLog() {
     $('#emptyNew').onclick = openSetup;
     return;
   }
+  // Drawing the whole log shows everything; nothing is left waiting to be revealed.
+  showGen++;
+  showQueue.length = 0;
+  shown = null;
   box.innerHTML = log.map((m) => msgHtml(m, false)).join('');
   box.scrollTop = box.scrollHeight;
 }
@@ -512,6 +554,10 @@ function renderHeader() {
     if (c.paused) sub = `멈춤 · ${sub}`;
   }
   $('#phasePill').textContent = sub;
+  const pace = $('#paceBtn');
+  pace.hidden = !c;
+  pace.textContent = PACE_LABEL[c?.pace] || '보통';
+  pace.title = `글이 나오는 속도: ${PACE_LABEL[c?.pace] || '보통'} (누르면 바뀜)`;
   const pb = $('#pauseBtn');
   pb.hidden = !c || state.phase === 'ended';
   pb.innerHTML = c?.paused ? ICON.play : ICON.pause;
@@ -532,8 +578,10 @@ function renderTurnbar() {
   const c = camp();
   const bar = $('#turnbar');
   let html = '';
+  const behind = !!shown || showQueue.length > 0;
+  const skip = behind ? '<button type="button" class="ghost" data-skip>▶▶ 빨리 감기</button>' : '';
   if (c?.paused) {
-    html = '<span class="grow">멈춤 상태예요.</span><button type="button" data-resume>재개</button>';
+    html = `<span class="grow">멈춤 상태예요.</span>${skip}<button type="button" data-resume>재개</button>`;
   } else if (c && builderNeeded()) {
     html = '<span class="grow">내 캐릭터를 만들 차례예요. 다 만들 때까지 테이블이 기다려요.</span><button type="button" data-build>캐릭터 만들기</button>';
   } else if (c && state.phase !== 'ended') {
@@ -544,13 +592,8 @@ function renderTurnbar() {
     else if (myTurn) parts.push('먼저 선언해도 돼요');
     if (thinking.length) parts.push(`${thinking.map(esc).join(', ')} 생각 중…`);
     if (state.phase === 'gm-wait') parts.push('GM(당신)의 서술을 기다려요. 보내면 다음 라운드가 시작돼요.');
-    // While the table waits for people to read, offer to skip ahead and to change the pace.
-    const reading = readyAt > Date.now();
-    if (reading) parts.push('읽는 시간');
-    const paceSel = reading ? `<select data-pace aria-label="읽기 속도">${[['slow', '느리게'], ['normal', '보통'], ['fast', '빠르게'], ['off', '기다리지 않기']].map(([k, l]) => `<option value="${k}"${c.pace === k ? ' selected' : ''}>${l}</option>`).join('')}</select>` : '';
-    if (parts.length) html = `<span class="grow">${parts.join(' · ')}</span>${myTurn ? '<button type="button" class="ghost" data-pass>넘기기</button>' : ''}${reading ? `${paceSel}<button type="button" class="ghost" data-skip>▶▶ 빨리 감기</button>` : ''}`;
-    clearTimeout(paceTimer);
-    if (reading) paceTimer = setTimeout(renderTurnbar, readyAt - Date.now() + 50);
+    // The page is still revealing what came in: offer to catch up.
+    if (parts.length || behind) html = `<span class="grow">${parts.join(' · ')}</span>${myTurn ? '<button type="button" class="ghost" data-pass>넘기기</button>' : ''}${skip}`;
   }
   bar.innerHTML = html;
   bar.hidden = !html;
@@ -828,6 +871,7 @@ $('#closeSide').onclick = closeDrawer;
 $('#scrim').onclick = closeDrawer;
 $('#sheetBack').onclick = closeSheet;
 $('#pauseBtn').onclick = () => api('/api/pause', { paused: !camp()?.paused });
+$('#paceBtn').onclick = () => api('/api/pace', { pace: PACE_NEXT[camp()?.pace] || 'normal' });
 $('#setupCancel').onclick = () => $('#setup').close();
 $('#stepBack').onclick = () => { step = Math.max(0, step - 1); showStep(); };
 $('#stepNext').onclick = () => {
@@ -870,10 +914,7 @@ $('#turnbar').addEventListener('click', (e) => {
   if (e.target.closest('[data-pass]')) api('/api/pass');
   if (e.target.closest('[data-resume]')) api('/api/pause', { paused: false });
   if (e.target.closest('[data-build]')) openBuilder();
-  if (e.target.closest('[data-skip]')) { skippedAt = Date.now(); finishReveals(); api('/api/skip'); }
-});
-$('#turnbar').addEventListener('change', (e) => {
-  if (e.target.matches('[data-pace]')) api('/api/pace', { pace: e.target.value });
+  if (e.target.closest('[data-skip]')) skipAhead();
 });
 
 $('#sheetScrim').onclick = () => { sheetMin = true; placeSheet(); };

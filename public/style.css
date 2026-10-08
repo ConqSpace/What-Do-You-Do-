@@ -707,3 +707,6 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
 /* Speech reveal: the text is laid out dim, then lit 어절 by 어절 (see reveal() in app.js). */
 .rv.dim .w { opacity: .22; transition: opacity .45s; }
 .rv.dim .w.on { opacity: 1; }
+
+/* The reveal pace in the header: a small text button that cycles. */
+.pacebtn { min-height: 32px; padding: 0 10px; font-size: 13px; white-space: nowrap; }
