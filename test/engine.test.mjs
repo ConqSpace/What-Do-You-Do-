@@ -680,3 +680,113 @@ test("the story's opening question is put to each player until they answer it", 
   assert.doesNotMatch(P.declareTurn(c, 'p1'), /아직 답하지 않았다/);
   assert.match(P.declareTurn(c, 'p2'), /아직 답하지 않았다/);
 });
+
+test('a boss has no HP: aimed rolls fill its hidden clock, phases turn at 3 and 6, and only a full clock fells it', async () => {
+  const P = await import('../lib/prompts.mjs');
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '보스전', userRole: 'spectator', players: ['mock'] });
+  engine.setPaused(true);
+  const c = engine.c;
+  c.foes = [];
+  c.characters.p1 = engine.makeCharacter({ name: '하르', class: '전사', scores: { 근력: 16, 민첩성: 15, 체력: 13, 지능: 12, 지혜: 9, 매력: 8 } }, 'p1');
+  engine.applyFoes([{ name: '잿심장', boss: true, clock: 8, hp: 30, damage: 'd10', note: '불의 거인' }]);
+  const boss = engine.findFoe('잿심장');
+  assert.deepEqual([boss.boss, boss.progress, boss.clock, boss.hp], [true, 0, 8, undefined]);
+
+  const roll = (dice, extra = {}) => {
+    setRng(scripted(dice));
+    const [check] = engine.validChecks([{ who: 'p1', move: '접근전', target: '잿심장', ...extra }]);
+    const r = engine.rollCheck(check);
+    setRng(null);
+    return r;
+  };
+  let r = roll([5, 5]); // 10 + 2: 성공 → 2칸; a damage move at the boss rolls no damage
+  assert.equal(r.damage, undefined);
+  assert.equal(boss.progress, 2);
+  assert.ok(!c.log.some((m) => /잿심장 HP/.test(m.text || '')), 'no HP line for a boss');
+  roll([3, 3]); // 6 + 2 = 8: 부분 성공 → 1칸, now 3/8: phase 2
+  assert.equal(boss.progress, 3);
+  assert.equal(boss.news, 'phase');
+  assert.match(P.adjudicateTurn(c), /잿심장: 진행 3\/8 · 2단계[\s\S]*방금 2단계로 넘어갔다/);
+  assert.doesNotMatch(P.declareTurn(c, 'p1'), /진행 3\/8/, 'players never see the clock');
+  assert.match(P.declareTurn(c, 'p1'), /잿심장 \(보스\)/);
+
+  // The GM can't fell it, remove it or end the story while its clock isn't full.
+  c.resolve = { stage: 'results', who: 'p1', results: [] };
+  engine.endTurn({ narration: '거인이 무너집니다.', facts: { assert: ['상태(잿심장, 쓰러짐)'] }, foes: [{ name: '잿심장', remove: true }], end: true });
+  assert.notEqual(c.phase, 'ended');
+  assert.ok(engine.findFoe('잿심장') && !boss.down);
+  assert.ok(!new Ledger(c.facts).list.some((f) => f.p === '상태' && f.args[1] === '쓰러짐'));
+  assert.ok((c.facts.rejected || []).some((x) => /보스다/.test(x.why)));
+  assert.equal(boss.news, null, 'the phase was narrated');
+
+  roll([1, 1], { against: '잿심장' }); // 2 + 2 = 4: 실패 → 0칸
+  assert.equal(boss.progress, 3);
+  roll([6, 6], { against: '잿심장' }); // 풀다이스 → 3칸: 6/8, phase 3
+  assert.equal(boss.progress, 6);
+  roll([5, 5]); // 성공 → 8/8
+  assert.equal(boss.news, 'down');
+  assert.match(P.adjudicateTurn(c), /진행이 다 찼다/);
+  c.resolve = { stage: 'results', who: 'p1', results: [] };
+  engine.endTurn({ narration: '심장이 깨집니다.' });
+  assert.ok(boss.down);
+  assert.ok(new Ledger(c.facts).list.some((f) => f.p === '상태' && f.args[0] === '잿심장' && f.args[1] === '쓰러짐'), 'its fall is a fact');
+
+  // The table's view carries no clock; the secrets tab does.
+  assert.equal(engine.view().campaign.foes[0].progress, undefined);
+  assert.deepEqual(engine.secrets().bosses, [{ name: '잿심장', progress: 8, clock: 8, phase: 3, down: true }]);
+});
+
+test("rolls that leave a standing boss untouched are counted, and the GM is reminded to aim them", async () => {
+  const P = await import('../lib/prompts.mjs');
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '보스전', userRole: 'spectator', players: ['mock'] });
+  engine.setPaused(true);
+  const c = engine.c;
+  c.foes = [];
+  c.characters.p1 = engine.makeCharacter({ name: '하르', class: '전사' }, 'p1');
+  engine.applyFoes([{ name: '잿심장', boss: true }]);
+  for (let i = 0; i < 4; i++) engine.rollCheck(engine.validChecks([{ who: 'p1', move: '위험 돌파', stat: '민첩성' }])[0]);
+  assert.equal(c.bossDry, 4);
+  assert.match(P.adjudicateTurn(c), /보스 진행 없이 판정이 4번 지났다/);
+});
+
+test("the premise goes to the GM, not into the players' log; what is only for the GM stays with the GM", async () => {
+  const P = await import('../lib/prompts.mjs');
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '수문과 사슬로 약점을 드러내는 보스전', gmOnly: '심장은 브론의 망치로만 깨진다', userRole: 'spectator', players: ['mock'] });
+  engine.setPaused(true);
+  const c = engine.c;
+  c.characters.p1 = engine.makeCharacter({ name: '하르', class: '전사' }, 'p1');
+  assert.doesNotMatch(P.declareTurn(c, 'p1'), /수문과 사슬로/);
+  assert.match(P.adjudicateTurn(c), /수문과 사슬로/);
+  assert.match(P.gmBrief(c), /너만 아는 설정[^\n]*브론의 망치로만/);
+  assert.doesNotMatch(P.playerBrief(c, 'p1') + P.declareTurn(c, 'p1'), /브론의 망치로만/);
+});
+
+test("a boss's clock is sized to the party, and a rule can't fell it before the clock fills", async () => {
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '보스전', userRole: 'spectator', players: ['mock', 'mock', 'mock', 'mock'] });
+  engine.setPaused(true);
+  const c = engine.c;
+  c.foes = [];
+  engine.applyFoes([{ name: '녹쇠왕', boss: true, clock: 8 }]);
+  const boss = engine.findFoe('녹쇠왕');
+  assert.equal(boss.clock, 16, 'four players: 16 segments, whatever the GM wrote');
+
+  // The GM's own clock and a rule that fells the boss when it fills: refused while the boss stands.
+  engine.applyFacts({
+    facts: { assert: ['시계(녹쇠왕 공략) = 7/8'] },
+    rules: { add: [{ name: '쓰러짐', when: ['시계(녹쇠왕 공략) >= 8'], then: ['상태(녹쇠왕, 쓰러짐)'] }, { name: '결말', when: ['상태(녹쇠왕, 쓰러짐)'], ending: true }] },
+  });
+  engine.applyFacts({ facts: { assert: ['시계(녹쇠왕 공략) = +1'] } });
+  const L = new Ledger(c.facts);
+  assert.ok(!L.list.some((f) => f.p === '상태' && f.args[0] === '녹쇠왕' && f.args[1] === '쓰러짐'), 'the rule could not fell it');
+  assert.ok(!L.triggered.some((t) => t.ending), 'so no ending fired');
+  // Once the clock fills, the same fact goes through.
+  boss.progress = boss.clock;
+  boss.news = 'down';
+  engine.settleBosses();
+  assert.ok(new Ledger(c.facts).list.some((f) => f.p === '상태' && f.args[0] === '녹쇠왕' && f.args[1] === '쓰러짐'));
+  assert.ok(new Ledger(c.facts).triggered.some((t) => t.ending));
+});

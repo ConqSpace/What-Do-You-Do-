@@ -700,3 +700,10 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
 /* A player's answer to the GM's question: table talk, above the character's words. */
 .declare .ans { font-size: 14px; margin-bottom: 4px; }
 .declare .ans .muted { font-size: 12px; font-weight: 600; margin-right: 4px; }
+
+/* A boss: no HP bar; how the fight goes is told by the narration. */
+.foe .bossbadge { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: var(--surface2); color: var(--accent); white-space: nowrap; }
+
+/* Speech reveal: the text is laid out dim, then lit 어절 by 어절 (see reveal() in app.js). */
+.rv.dim .w { opacity: .22; transition: opacity .45s; }
+.rv.dim .w.on { opacity: 1; }

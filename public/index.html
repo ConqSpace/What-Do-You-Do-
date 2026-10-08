@@ -171,7 +171,7 @@
           <div class="shero" id="storyHero"></div>
           <div id="storyRows"></div>
           <details class="sedit" id="storyEdit">
-            <summary>직접 고치기 <span class="muted">전제 · 분위기 · 첫 장면 · 길이</span></summary>
+            <summary>직접 고치기 <span class="muted">전제 · 분위기 · 첫 장면 · 마스터에게만 · 길이</span></summary>
             <div class="seditbody">
               <label for="premise">전제</label>
               <textarea id="premise" name="premise" rows="3" placeholder="안개 낀 항구 도시에서 연쇄 실종 사건을 쫓는 이야기"></textarea>
@@ -179,6 +179,8 @@
               <input id="tone" name="tone" placeholder="진지하고 음산하게">
               <label for="opening">첫 장면 (선택)</label>
               <input id="opening" name="opening" placeholder="부두에 떠밀려 온 빈 구명정 한 척">
+              <label for="gmOnly">마스터에게만 <span class="muted">(플레이어에게는 안 보여요)</span></label>
+              <textarea id="gmOnly" name="gmOnly" rows="2" placeholder="보스는 세 단계: 물로 식히면 껍질이 갈라진다 …"></textarea>
               <label for="storyLength">길이</label>
               <select id="storyLength" name="storyLength"><option value="short">짧은 모험</option><option value="long">긴 모험</option><option value="">마스터에게 맡기기</option></select>
             </div>

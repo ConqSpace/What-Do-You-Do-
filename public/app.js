@@ -231,7 +231,7 @@ function rollHtml(m, fresh) {
 function hiddenFromMe(m) {
   if (!m.to) return false;
   if (secretsOpen) return false;
-  if (m.ledger) return true;
+  if (m.ledger || m.to === 'gm') return true;
   return camp()?.userRole === 'player' && m.to !== 'user';
 }
 
@@ -241,12 +241,12 @@ function msgHtml(m, fresh) {
     case 'whisper':
       return `<div class="msg whisper"><span class="tag">귓속말 → ${esc(m.to === 'user' ? '나' : charName(m.to))}</span> ${esc(m.text)}</div>`;
     case 'narration':
-      if (m.cont) return `<article class="msg narration cont">${esc(m.text)}</article>`;
-      return `<article class="msg narration"><span class="tag">${esc(gmName())}${seatOf('gm') ? ` · ${esc(seatOf('gm').label)}` : ''}</span>${esc(m.text)}</article>`;
+      if (m.cont) return `<article class="msg narration cont"><span class="rv">${esc(m.text)}</span></article>`;
+      return `<article class="msg narration"><span class="tag">${esc(gmName())}${seatOf('gm') ? ` · ${esc(seatOf('gm').label)}` : ''}</span><span class="rv">${esc(m.text)}</span></article>`;
     // An NPC's line, voiced by the GM but heard from the NPC.
     case 'npc':
       return `<div class="msg npc"><span class="avatar npc" style="background:${npcColor(m.name)}" aria-hidden="true">${esc((m.name || '?').slice(0, 1))}</span><div class="bubble">
-        <div class="who"><b>${esc(m.name)}</b> · NPC</div><div class="say">${esc(m.text)}</div>
+        <div class="who"><b>${esc(m.name)}</b> · NPC</div><div class="say rv">${esc(m.text)}</div>
       </div></div>`;
     case 'scene': {
       const [title, ...rest] = m.text.split(' — ');
@@ -260,8 +260,8 @@ function msgHtml(m, fresh) {
       const move = m.move ? (moveInfo(m.move) ? `<span class="move tipped" tabindex="0" data-tip-move="${esc(m.move)}">${esc(m.move)}</span>` : `<span class="move">${esc(m.move)}</span>`) : '';
       return `<div class="msg declare${me ? ' me' : ''}">${avatar(m.from)}<div class="bubble">
         <div class="who">${who}</div>
-        ${move}${m.answer ? `<div class="ans"><span class="muted">답</span> ${esc(m.answer)}</div>` : ''}${m.line ? `<div class="line">${esc(m.line)}</div>` : ''}${m.say ? `<div class="say">${esc(m.say)}</div>` : ''}
-        ${m.action ? `<div class="act">${esc(m.action)}</div>` : ''}
+        ${move}${m.answer ? `<div class="ans"><span class="muted">답</span> <span class="rv">${esc(m.answer)}</span></div>` : ''}${m.line ? `<div class="line rv">${esc(m.line)}</div>` : ''}${m.say ? `<div class="say rv">${esc(m.say)}</div>` : ''}
+        ${m.action ? `<div class="act rv">${esc(m.action)}</div>` : ''}
       </div></div>`;
     }
     case 'ooc':
@@ -277,7 +277,7 @@ function msgHtml(m, fresh) {
         return `<details class="msg system bonds"><summary>${esc(head)} <span class="muted">${rest.length}개</span></summary><div>${esc(rest.join('\n'))}</div></details>`;
       }
       const cls = m.ledger ? ' ledger' : m.effect ? ' effect' : m.from === 'gm' ? ` intro${m.cont ? ' cont' : ''}` : m.clue ? ' clue' : '';
-      return `<div class="msg system${cls}">${esc(m.text)}</div>`;
+      return `<div class="msg system${cls}">${m.from === 'gm' && !m.effect && !m.ledger ? `<span class="rv">${esc(m.text)}</span>` : esc(m.text)}</div>`;
     }
   }
 }
@@ -286,8 +286,45 @@ function appendMsg(m, fresh) {
   const box = $('#log');
   const near = box.scrollHeight - box.scrollTop - box.clientHeight < 160;
   box.querySelector('.empty')?.remove();
-  box.insertAdjacentHTML('beforeend', msgHtml(m, fresh));
+  const html = msgHtml(m, fresh);
+  if (!html) return;
+  box.insertAdjacentHTML('beforeend', html);
+  if (fresh && m.from !== 'user') reveal(box.lastElementChild);
   if (near || m.from === 'user') box.scrollTop = box.scrollHeight;
+}
+
+// New speech comes in 어절 by 어절: the whole text sits dim first, so the eye can read ahead,
+// and each 어절 brightens in turn, a little longer at a comma or a sentence's end. The pace
+// follows the reading pace; "기다리지 않기" or reduced motion shows it at once.
+const REVEAL_MS = { slow: 55, normal: 34, fast: 22 }; // per character
+const revealing = new Set();
+let skippedAt = 0; // "빨리 감기": the beats it lets out arrive right after, shown at once
+function finishReveals() {
+  for (const r of revealing) r.finish();
+}
+function reveal(node) {
+  const ms = REVEAL_MS[camp()?.pace];
+  const parts = [...node.querySelectorAll('.rv')];
+  if (!ms || !parts.length || Date.now() - skippedAt < 1500 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  finishReveals(); // what came before is shown in full
+  const words = [];
+  for (const el of parts) {
+    // Split on spaces only; line breaks stay with their 어절 (the text is pre-wrap).
+    el.innerHTML = el.textContent.split(/( +)/).map((t) => (/^ +$/.test(t) || !t ? esc(t) : `<span class="w">${esc(t)}</span>`)).join('');
+    el.classList.add('dim');
+    words.push(...el.querySelectorAll('.w'));
+  }
+  const r = { timer: null, i: 0 };
+  r.finish = () => { clearTimeout(r.timer); for (const el of parts) el.classList.replace('dim', 'lit'); revealing.delete(r); };
+  const step = () => {
+    const w = words[r.i++];
+    if (!w) return r.finish();
+    w.classList.add('on');
+    const t = w.textContent;
+    r.timer = setTimeout(step, ms * t.length * 0.9 + 60 + (/[.!?…]["”']?$/.test(t) ? 260 : /,$/.test(t) ? 140 : 0));
+  };
+  revealing.add(r);
+  r.timer = setTimeout(step, 120);
 }
 
 function renderLog() {
@@ -365,8 +402,8 @@ function renderStory() {
     ${c.scene?.title ? `<h3>${esc(c.scene.title)}</h3><p>${esc(c.scene.description)}</p>` : ''}
     ${clues.length ? `<h3>단서 수첩</h3><ul class="clues">${clues.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
     ${facts.length ? `<h3>${c.userRole === 'player' ? '내 캐릭터가 아는 사실' : '모두가 아는 사실'}</h3>${facts.map(([name, items]) => `<div class="factgroup"><h4>${esc(name)}</h4><ul class="facts plain">${items.map((t) => `<li><span>${t}</span></li>`).join('')}</ul></div>`).join('')}` : ''}
-    ${c.foes?.length ? `<h3>적</h3>${c.foes.map((f) => `<div class="foe"><div><b>${esc(f.name)}</b> <span class="muted">${[f.armor ? `갑옷 ${f.armor}` : '', f.damage ? `피해 ${esc(f.damage)}` : '', f.attack ? `공격 ${f.attack}` : '', f.dodge ? `회피 ${f.dodge}` : ''].filter(Boolean).join(' · ')}</span></div>
-      ${bar({ value: f.hp, max: f.maxHp })}<div class="muted">HP ${f.hp} / ${f.maxHp}${f.note ? ` · ${esc(f.note)}` : ''}</div></div>`).join('')}` : ''}
+    ${c.foes?.length ? `<h3>적</h3>${c.foes.map((f) => `<div class="foe"><div><b>${esc(f.name)}</b>${f.boss ? ` <span class="bossbadge">보스${f.down ? ' · 쓰러짐' : ''}</span>` : ''} <span class="muted">${[f.armor ? `갑옷 ${f.armor}` : '', f.damage ? `피해 ${esc(f.damage)}` : '', f.attack ? `공격 ${f.attack}` : '', f.dodge ? `회피 ${f.dodge}` : ''].filter(Boolean).join(' · ')}</span></div>
+      ${f.boss ? (f.note ? `<div class="muted">${esc(f.note)}</div>` : '') : `${bar({ value: f.hp, max: f.maxHp })}<div class="muted">HP ${f.hp} / ${f.maxHp}${f.note ? ` · ${esc(f.note)}` : ''}</div>`}</div>`).join('')}` : ''}
     ${c.summary ? `<h3>지금까지의 이야기</h3><div class="pre">${esc(c.summary)}</div>` : ''}
     <h3>진행</h3><p>라운드 ${c.round}</p>`;
 }
@@ -431,7 +468,10 @@ async function renderSecrets() {
         ${c.text ? `<div class="muted">${esc(c.text)}</div>` : ''}${c.sources.length ? `<div class="src">← ${c.sources.map(esc).join(', ')}</div>` : ''}</div></li>`).join('')}</ul>
     </section>`;
   }).join('');
-  box.innerHTML = (graph ? `<h3>단서 그래프</h3>${graph}` : '')
+  const bosses = (s.bosses || []).map((b) => `<section class="concl${b.down ? ' deducible' : ''}"><div class="ch"><b>${esc(b.name)}</b><span class="badge">${b.down ? '쓰러짐' : `${b.phase}단계`}</span></div>
+    <div class="meter" aria-label="진행 ${b.progress}/${b.clock}">${Array.from({ length: b.clock }, (_, i) => `<i class="${i < b.progress ? 'known' : ''}"></i>`).join('')}</div>
+    <div class="muted">진행 ${b.progress} / ${b.clock}</div></section>`).join('');
+  box.innerHTML = (bosses ? `<h3>보스 진행</h3>${bosses}` : '') + (graph ? `<h3>단서 그래프</h3>${graph}` : '')
     + `<h3>진실 표 (사실 장부)</h3>${table || '<p class="muted">아직 비어 있어요.</p>'}`
     + (s.rules?.length ? `<h3>규칙</h3><ul class="rules">${s.rules.map((r) => `<li class="${r.fired.length ? 'fired' : ''}">
         <div class="rh"><b>${esc(r.name)}</b>${r.ending ? '<span class="who secret">결말</span>' : ''}${r.repeat ? '<span class="who">반복</span>' : ''}<span class="who ${r.fired.length ? 'all' : ''}">${r.fired.length ? `발동 · 라운드 ${r.fired.join(', ')}` : '대기'}</span></div>
@@ -765,7 +805,7 @@ function submitSetup() {
   saveName(String(f.get('userName') || '').trim());
   api('/api/campaign', {
     rules: f.get('rules'), premise: f.get('premise'), tone: f.get('tone'),
-    title: f.get('storyTitle'), opening: f.get('opening'), length: f.get('storyLength'), ...storyExtra,
+    title: f.get('storyTitle'), opening: f.get('opening'), length: f.get('storyLength'), gmOnly: f.get('gmOnly'), ...storyExtra,
     userName: f.get('userName'), userRole: role(), gm: f.get('gm'), players,
     house: Object.fromEntries((ruleMeta()?.houseRules || []).map((h) => [h.id, f.get(`house_${h.id}`) === 'on'])),
   });
@@ -830,7 +870,7 @@ $('#turnbar').addEventListener('click', (e) => {
   if (e.target.closest('[data-pass]')) api('/api/pass');
   if (e.target.closest('[data-resume]')) api('/api/pause', { paused: false });
   if (e.target.closest('[data-build]')) openBuilder();
-  if (e.target.closest('[data-skip]')) api('/api/skip');
+  if (e.target.closest('[data-skip]')) { skippedAt = Date.now(); finishReveals(); api('/api/skip'); }
 });
 $('#turnbar').addEventListener('change', (e) => {
   if (e.target.matches('[data-pace]')) api('/api/pace', { pace: e.target.value });
