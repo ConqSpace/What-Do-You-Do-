@@ -872,7 +872,9 @@ function renderPage() {
   $('#buildStep').textContent = TITLE[d.page];
   $('#buildPrev').hidden = i === 0;
   const last = i === list.length - 1;
-  $('#buildNext').textContent = last ? '완성 · 테이블로' : d.page === 'start' && d.start === 'ai' ? `${gm()}에게 맡기기` : `다음 · ${TITLE[list[i + 1]]}`;
+  // The verb on top, where it goes underneath: "다음 · 외모 · 성격" fits a phone footer only on two lines.
+  const nextLabel = (verb, to) => `<span>${verb}</span><small>${esc(to)}</small>`;
+  $('#buildNext').innerHTML = last ? nextLabel('완성', '테이블로') : d.page === 'start' && d.start === 'ai' ? esc(`${gm()}에게 맡기기`) : nextLabel('다음', TITLE[list[i + 1]]);
   $('#buildRest').textContent = `나머지는 ${gm()}에게`;
   $('#buildRest').hidden = READ_ONLY.includes(d.page) || !!d.card;
   if (!info) { $('#buildMain').innerHTML = '<p class="muted">불러오는 중…</p>'; return; }
