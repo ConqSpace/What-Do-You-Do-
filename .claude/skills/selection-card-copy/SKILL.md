@@ -46,17 +46,20 @@ The signature box is the reason to pick this card over the next one, so it comes
 - **Pick from the rule module's own options** (for Dungeon World, the class's starting 액션 in `lib/rules/dw.mjs`; for Call of Cthulhu, the occupation's skills in `lib/builder.mjs`). Choose the one no other card has: 전사's 고유병기 over the 갑옷을 옷처럼 a 성기사 also has.
 - **Use the rules' exact name** (Dungeon World follows 던전월드 한국어 공개판: 액션, 인연, 예비 …). A player will meet that name again on the sheet and in the log.
 - **Effect in one plain line**: what it lets you do, with a number only when the number is the point ("1d8 치유"). Not the full move text; the 핵심 액션 page shows that.
+- **A rule as the signature (rule system cards): no numbers or rule names a newcomer can't read.** "부분 성공 (7~9): 원하는 걸 얻지만, 무엇을 내줄지 골라야 합니다" only speaks to people who know the game. Say plainly what the rule changes, then one concrete moment: "성공, 그런데… 성공과 실패 사이에 '해냈지만 대가가 따르는' 결과가 자주 나와요. 자물쇠는 열었는데 경비가 그 소리를 들은 것처럼요." Vague words that sound like an explanation are the same trap: "애매하게 나오면", "대가가 붙어요", "크게 꼬여요" leave the reader asking how much, what, when.
 - When a card has no single standout ability (a d20 concept), use the thing the character carries or knows that changes play ("개조 사이버덱: 잠긴 문과 시스템은 대개 열립니다").
 
-## Story cards: a Netflix title page
+## Story cards: a Netflix page, prepared the Dungeon World way
 
-Choosing a story is choosing what to watch, so the story gallery (`public/stories.js`) borrows Netflix's title page instead of the four-line card: small poster tiles in rows, and the picked story large on top. A character card says *who you are*; a story card says *what happens and what you'll be doing in it*. Copy that only paints a grand scene reads like a speech.
+Choosing a story is choosing what to watch, so the story gallery (`public/stories.js`) borrows Netflix's title page: small poster tiles in rows, the picked story large on top. What goes on that page follows how Dungeon World's rulebook prepares a game (첫 세션, 국면 chapters): **never bring a plot**. Bring a situation, the questions play will answer, a first scene that drops the party into trouble, and, for the GM only, a front. A story card says *what is going on and what you will find out*; copy that narrates what will happen is a plot, and copy that only paints a grand scene reads like a speech.
 
-- **Synopsis, 3 to 5 short sentences in the present tense (~다), the party ("모험가들") as the subject**, never addressing the reader. Netflix's order: who goes in, why, the turn ("하지만" / "그런데"), what is at stake. "고블린 떼가 마을 대장장이를 폐광으로 끌고 갔다. 모험가들은 그를 데려오려고 어두운 갱도로 내려간다. 그런데 깊은 곳에서 고블린들이 오히려 도망쳐 나온다. …"
-- **첫 장면**: two or three sentences that stop on a hook (a thing left behind, a question), the way Netflix writes an episode blurb. Don't label it "1화": this game has no episodes, and the label would promise a structure that isn't there. It is the opening the GM starts the story in, so it must be a concrete scene.
-- **Meta line**: genre · length (짧은 모험 / 긴 모험) · "처음이라면 추천" where it fits. Length is a size hint for the GM's ending conditions, never a round limit.
-- **이 이야기는**: four tags, mood words mixed with what you'll do (으스스한 · 수수께끼 · 조사 · 대화), so a fighter and a talker can each find theirs.
-- The GM gets plainer fields next to the display copy: `premise` (one or two sentences), `tone` (a direction like "어둡지만 희망이 남아 있게", not a tag).
+- **Situation** (`situation`, 2 to 4 short sentences, present or past tense, ~다): what is wrong right now and who is caught in it. Nothing that will happen later; "그런데 고블린들이 도망쳐 나온다" is a portent for the GM, not card copy. It is also the premise the GM gets.
+- **이야기가 답할 질문** (`questions`, three): the front's stakes questions, the hook Netflix gets from its twist. Each one should change the world once answered, and nobody, the GM included, knows the answer yet: "대장장이는 살아서 돌아올 수 있을까?", "고블린들은 무엇에게서 도망치고 있나?".
+- **첫 장면** (`scene: { title, text, ask }`): the rulebook's opening, the party already in a tense moment that asks them to act (an ambush, a guard's blade, a fire in the night), not an atmospheric still life. `ask` is the question the GM puts to the players right away ("대장장이는 여러분에게 어떤 사람인가요?"); their answers build the world. Don't call it "1화": the game has no episodes.
+- **Meta line**: genre · length (짧은 모험 / 긴 모험) · "처음이라면 추천" where it fits. Length is a size hint for how far the GM sets the ending conditions, never a round limit.
+- **이 이야기는**: four tags, mood words mixed with what you'll do (으스스한 · 수수께끼 · 조사 · 대화).
+- **Front, GM only** (`front`): two or three dangers, each with a type and motive from the rulebook's lists (사교, 부패한 정부, 당파, 신, 용, 괴물 떼, 저주받은 장소 …; `DANGER_TYPES` in `public/stories.js`), portents in the order they happen if nobody steps in, and a doom of one of the six kinds (압제, 질병, 파괴, 찬탈, 궁핍, 혼돈의 득세). Add the cast, a `blank` left undecided on purpose (the thing in the deep, who took the crown), and a `clock` when time itself presses. The engine turns portents into threat-clock steps and dooms into bad endings.
+- `tone` stays a direction for the GM ("어둡지만 희망이 남아 있게"), not a tag.
 
 ## Say it the way people talk
 
@@ -83,7 +86,7 @@ Names, lists and terms may come straight from the source the rules follow (a CC 
 | Rule system (new-campaign screen) | `lib/rules/<id>.mjs` → `meta()` | `icon`, `tags` (the numbers: dice, genre), `intro` (what stories you'll play), `signature` (the one rule that makes it fun, e.g. 부분 성공 7~9); drawn in `public/app.js` → `openSetup()` |
 | Dungeon World 직업 | `lib/builder.mjs` → `DW_CLASSES` | `icon`, `intro: [line1, line2]`, `signature: { name, text }`; numbers come from `lib/rules/dw.mjs` (hp, damage) |
 | Call of Cthulhu 직업 | `lib/builder.mjs` → `COC_OCCUPATIONS` | `icon`, `intro`, `signature` (name = two of its `skills`, "관찰력 · 심리학"); `credit` is the number |
-| Story gallery | `public/stories.js` → `STORIES`, `STARTS`, `STORY_ROWS` | `title`, `kind`, `length`, `beginner`, `synopsis`, `scene: { title, text }` (the first scene), `tags`, plus `premise` / `tone` for the GM; drawn in `public/app.js` → `renderStories()` / `renderHero()` |
+| Story gallery | `public/stories.js` → `STORIES`, `STARTS`, `STORY_ROWS` | `title`, `kind`, `length`, `beginner`, `situation`, `questions`, `scene: { title, text, ask }`, `tags`, plus `tone` and `front` for the GM; drawn in `public/app.js` → `renderStories()` / `renderHero()` |
 | Quick-start cards | `public/archetypes.js` | `title`, `intro`; d20 cards also `signature` (one of their `items`); dw/coc7 cards borrow their class's or occupation's signature |
 | Card rendering | `public/builder.js` → `pcard()`, `quickNums()`, `quickSig()` | layout and numbers |
 

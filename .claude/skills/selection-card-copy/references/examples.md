@@ -49,27 +49,39 @@ The table above was the first approved set; these lines replaced its stiffer one
 | 드루이드 | 숲의 신령들 손에 자란 아이입니다. 짐승으로 변해 자기 땅을 누빕니다. |
 | 음유시인 | 노래 한 곡이면 어디서든 환영받는 이야기꾼입니다. 전설이 어떻게 끝나는지 직접 보려고 길을 나섰습니다. |
 
-## Story cards: from a speech to a title page
+## Story cards: from a speech to a front
 
-Three drafts of the same story, and what was wrong with each.
+How one story went from speech to plot to the Dungeon World way.
 
-1. Card copy, "~습니다": "국경 마을에서 밤마다 종이 울리고, 한 사람씩 사라집니다. 영주는 입을 닫았고, 마을 사람들은 당신들만 바라봅니다." Reads like an announcement; "당신들" is translated English.
-2. Grand present tense: "국경 마을에 밤마다 종이 울리고, 날이 밝으면 누군가 사라진다. 영주는 입을 닫았고, 모험가들은 종탑에 오른다." Still a speech: it paints a scene but never says why they go in, what turns, or what is at stake. "입을 닫았고" is a stock literary phrase.
-3. The title page (current). The first line now names the bell, so "종탑에 오르기 전에" doesn't come out of nowhere; the first scene was labeled "1화" until we noticed the game has no episodes:
+1. A speech: "국경 마을에서 밤마다 종이 울리고, 한 사람씩 사라집니다. 영주는 입을 닫았고, 마을 사람들은 당신들만 바라봅니다." Announcement tone, a stock phrase, translated "당신들".
+2. A plot in Netflix grammar: "… 하지만 영주는 아무것도 말해 주지 않고, 주민들은 뭔가 숨기는 눈치다. 종탑에 오르기 전에, 누구를 믿을지 정해야 한다." Reads well, but it decides the beats; the rulebook says never bring the plot to the table.
+3. The Dungeon World way (current):
 
 ```
-잿빛 종탑의 비밀
-판타지 · 짧은 모험 · 처음이라면 추천
+⛏ 드워프 폐광                    던전 · 짧은 모험 · 처음이라면 추천
 
-밤마다 종이 울리고, 다음 날이면 누군가 사라지는 국경 마을. 모험가들이 그 까닭을 알아보러 마을에 온다.
-하지만 영주는 아무것도 말해 주지 않고, 주민들은 뭔가 숨기는 눈치다.
-종탑에 오르기 전에, 누구를 믿을지 정해야 한다.
+고블린 떼가 마을 대장장이를 끌고 드워프 폐광으로 사라졌다.
+요즘 폐광에서 도망쳐 나오는 고블린이 부쩍 늘었다.
+갱도 깊은 곳에서 뭔가 깨어났다는 소문이 돈다.
 
-첫 장면 · 주인 없는 신발
-첫날 밤, 종이 울린다. 아침이 되자 종탑 아래 남은 건 작은 신발 한 짝. 신발 주인은 어디로 갔을까.
+이야기가 답할 질문
+· 대장장이는 살아서 돌아올 수 있을까?
+· 고블린들은 무엇에게서 도망치고 있나?
+· 폐광 깊은 곳의 그것을 다시 잠재울 수 있을까?
 
-이 이야기는: 으스스한 · 수수께끼 · 조사 · 대화
+첫 장면 · 갱도 입구의 정찰병
+고블린 정찰병 셋이 모험가들에게 활을 겨눈다. 그중 하나가 대장장이의 망치를 들고 있다.
+마스터가 먼저 물을 것: "대장장이는 여러분에게 어떤 사람인가요?"
+
+이 이야기는: 거친 · 던전 · 전투 · 구출
 ```
+
+GM only:
+- 붉은이빨 고블린 부족 (괴물 떼 · 동기: 새 보금자리를 찾는다). 흉조: 대장장이에게 무기를 만들게 한다 → 마을 외곽을 습격한다 → 폐광을 버리고 마을로 몰려온다. 재앙: 마을이 고블린 손에 넘어간다 (압제)
+- 깊은 곳에서 깨어난 것 (고대의 저주 · 동기: 깨어나 퍼진다). 흉조: 갱도가 흔들린다 → 고블린들이 미쳐 날뛴다 → 봉인이 깨진다. 재앙: 산 아래 마을까지 어둠이 번진다 (파괴)
+- 등장인물: 대장장이 브론, 고블린 족장 스크랄 · 빈칸: 깨어난 것의 정체
+
+The earlier first scene, "갱도 입구 기둥에 대장장이의 망치가 걸려 있다", was a still life; the new one puts arrows on the party and asks a question, as the rulebook's first session does.
 
 ## Rule system cards (the shape for a whole game)
 
@@ -88,6 +100,13 @@ A rule card sells the kind of story, not the dice. The dice go in the numbers.
 ```
 
 The signature is the one rule players remember after the session (DW's 7~9, d20's natural 20 and 1, Call of Cthulhu's 이성), told as what it does to the story.
+
+The first signature was "부분 성공 (7~9): 원하는 걸 얻지만, 무엇을 내줄지 골라야 합니다." A newcomer can't read 7~9 or guess what "내준다" means. A second try, "주사위가 애매하게 나오면 해내긴 하지만 대가가 붙어요", was vague in a new way (how 애매? what 대가?). The current one says what the rule adds, then shows it:
+
+```
+┌ 성공, 그런데…
+└ 성공과 실패 사이에 "해냈지만 대가가 따르는" 결과가 자주 나와요. 자물쇠는 열었는데 경비가 그 소리를 들은 것처럼요.
+```
 
 ## Call of Cthulhu 직업 (how the shape carries over)
 
