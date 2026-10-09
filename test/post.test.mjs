@@ -244,6 +244,62 @@ test("an easy GM puts what was said to the dice whole and rolls without asking; 
   assert.equal(engine.c.gmStyle, 'strict', 'strict unless picked');
 });
 
+test("an easy GM: one action is one roll, and it doesn't hold an acting player's turn to ask", async () => {
+  const engine = table();
+  engine.newCampaign({ rules: 'dw', premise: '폐광', userRole: 'player', players: ['mock'], userChar: { name: '흑수염', class: '도적' }, gmStyle: 'easy' });
+  await until(() => engine.c.phase === 'declare' && engine.c.turn === 'user' && engine.busy.size === 0);
+  const c = engine.c;
+  const brief = P.gmBrief(c);
+  assert.match(brief, /거리와 앞을 막은 위험은 하려는 행동의 판정 하나에 접어 넣는다/);
+  assert.doesNotMatch(brief, /장애를 넘는 판정을 요청해/, 'the strict reach rule is not in an easy brief');
+  const seen = [];
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, b, t, ctx) => {
+    if (kind !== 'adjudicate') return orig(seat, kind, b, t, ctx);
+    seen.push(t);
+    if (seen.length === 1) return { ok: true, text: JSON.stringify({ hold: true, narration: '근력이요, 민첩이요? 어느 쪽으로 하시겠습니까?' }) };
+    return { ok: true, text: JSON.stringify({ checks: [{ who: 'user', move: '접근전', target: '뾰족귀', stake: '화살을 뚫고 달려가 뾰족귀를 걷어찬다' }] }) };
+  };
+  engine.userPost('declare', '@화살을 뚫고 달려가 뾰족귀를 발로 찬다');
+  await until(() => c.phase === 'roll');
+  assert.doesNotMatch(seen[0], /"hold": false|짧은 대답\("hold": true\)/, 'no hold offered to a player who acted');
+  assert.match(seen[0], /행동을 선언했고 묻지 않았다/);
+  assert.match(seen[0], /다가가는 판정과 치는 판정으로 나누지 마/);
+  assert.match(seen[0], /"stake": "걸린 것 한 문장: 성공하면 무엇이 되는가/);
+  assert.match(seen[1], /서버가 받지 않은 되묻기[^]*근력이요, 민첩이요/, 'the stray question goes back to the GM');
+  assert.ok(!c.log.some((m) => /어느 쪽으로 하시겠습니까/.test(m.text || '')), 'the question never reached the table');
+  assert.equal(c.pendingChecks[0].move, '접근전');
+  engine.backends.chat = orig;
+  engine.setPaused(true);
+
+  // A strict GM keeps the reach rule and may still hold to answer.
+  engine.setGmStyle('strict');
+  assert.match(P.gmBrief(c), /장애를 넘는 판정을 요청해/);
+});
+
+test('a scene that runs long: the GM is pushed to close it, then told to cut; a new scene starts the count again', () => {
+  const engine = table();
+  engine.newCampaign({ rules: 'dw', premise: '폐광', userRole: 'spectator', players: ['mock'], length: 'short' });
+  engine.setPaused(true);
+  const c = engine.c;
+  c.scene = { title: '입구 비탈의 화살', description: '' };
+  const turn = () => P.adjudicateTurn(c);
+  c.round = 2;
+  assert.doesNotMatch(turn(), /장면 길이/);
+  c.round = SCENE.short.push;
+  assert.match(turn(), /장면 길이: "입구 비탈의 화살" 3라운드째\n- 이 장면은 할 만큼 했다/);
+  c.round = SCENE.short.cut;
+  assert.match(turn(), /⚠ 장면 길이: "입구 비탈의 화살" 5라운드째, 너무 길다/);
+  assert.match(P.resultsTurn(c, []), /이번 결과로 이 장면을 끝내/, 'the narration is told too');
+  c.resolve = { who: null, results: [] };
+  engine.endTurn({ narration: '일행은 갱도 안으로 들어섭니다.', scene: { title: '굽은 갱도', description: '칠흑' } });
+  assert.equal(c.sceneSince, SCENE.short.cut);
+  assert.ok(P.sceneAge(c) <= 1, 'counted from the new scene');
+  assert.doesNotMatch(turn(), /장면 길이/);
+});
+
+const SCENE = P.SCENE_ROUNDS;
+
 test('AI players: a veteran names moves, a beginner leaves them to the GM; a move in their own words counts', async () => {
   const engine = table();
   engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock', 'mock'] });

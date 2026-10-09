@@ -9,7 +9,7 @@ import { Store } from '../lib/store.mjs';
 import { Engine } from '../lib/engine.mjs';
 import { setRng } from '../lib/dice.mjs';
 import { Ledger } from '../lib/facts.mjs';
-import { declareTurn, adjudicateTurn } from '../lib/prompts.mjs';
+import { declareTurn, adjudicateTurn, resultsTurn, gmBrief } from '../lib/prompts.mjs';
 
 // Scripted dice first, then real ones.
 const scripted = (seq) => (sides) => (seq.length ? seq.shift() : 1 + Math.floor(Math.random() * sides));
@@ -208,6 +208,36 @@ test('dungeon world: the human picks 7-9 options, damage moves hit foes, 0 HP ro
   assert.equal(lb.roll.move, '황천길');
   assert.ok(c.characters.user.conditions.includes('사망'));
   engine.setPaused(true);
+});
+
+test('dungeon world minions: off the foe list, and one successful hit ends them with a word to the GM', async () => {
+  const { engine } = table();
+  engine.newCampaign({ rules: 'dw', premise: '폐광', userRole: 'spectator', players: ['mock'] });
+  await until(() => engine.c.phase === 'declare');
+  engine.setPaused(true);
+  const c = engine.c;
+  c.foes = [];
+  engine.applyFoes([{ name: '쉰목', hp: 7, armor: 1 }, { name: '오우거', hp: 14, armor: 2 }]);
+  assert.deepEqual(c.foes.map((f) => f.name), ['오우거'], 'a minion is not listed');
+  assert.ok(c.log.some((m) => m.to === 'gm' && /쉰목\(HP 7\)은\(는\) 잔챙이/.test(m.text)));
+  engine.applyFoes([{ name: '쉰목', hp: 7 }], { manual: true });
+  assert.ok(engine.findFoe('쉰목'), 'a human GM lists what it likes');
+
+  // A hit on an unlisted minion, a listed weak one (an older save), and a real foe.
+  setRng(scripted([4, 4, 1, /* */ 3, 4, 1, /* */ 5, 5, 3]));
+  const unlisted = engine.rollCheck({ who: 'p1', move: '접근전', target: '뾰족귀' });
+  const weak = engine.rollCheck({ who: 'p1', move: '접근전', target: '쉰목' });
+  const ogre = engine.rollCheck({ who: 'p1', move: '접근전', target: '오우거' });
+  setRng(null);
+  assert.equal(unlisted.minion, '뾰족귀');
+  assert.equal(weak.minion, '쉰목');
+  assert.equal(engine.findFoe('쉰목').hp, 0, 'down to one hit, whatever the dice');
+  assert.equal(ogre.minion, undefined);
+  assert.ok(engine.findFoe('오우거').hp > 0);
+  const turn = resultsTurn(c, [unlisted, weak]);
+  assert.match(turn, /## 잔챙이 처리: 뾰족귀\([^)]*\), 쉰목/);
+  assert.match(turn, /상처 입은 채 버티게 하지 마/);
+  assert.match(gmBrief(c), /잔챙이는 PC의 판정 하나가 성공하면\(7~9도\) 끝난다/);
 });
 
 test('call of cthulhu: spectator campaign with combat, sanity and clues runs to the end', async () => {
