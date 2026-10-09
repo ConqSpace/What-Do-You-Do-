@@ -262,6 +262,45 @@ test('the GM ends on where the next character is and what faces them, and tells 
   assert.match(P.resultsTurn(c, []), /질문의 답은 굴린 캐릭터의 이름을 불러/);
 });
 
+// In play the GM had a scene list in its notes ("쇠코는 쉽게 입을 연다") and paid every action
+// in clues: the players could only find what was written, never change the story.
+test('Dungeon World: no truth written in advance, and a success changes the situation', async () => {
+  const dw = table();
+  dw.newCampaign({ rules: 'dw', premise: '폐광', userRole: 'spectator', players: ['mock'], length: 'short' });
+  dw.setPaused(true);
+  const c = dw.c;
+  const brief = P.gmBrief(c);
+  assert.doesNotMatch(brief, /3단서 규칙|추론가능/, 'no clue paths for Dungeon World');
+  assert.match(brief, /지도를 그리되 빈칸을 남겨라/);
+  assert.match(brief, /네 메모에 없던 길이어도 그게 해법이다/);
+  assert.match(brief, /장면 순서나 정답은 적지 마/);
+  assert.doesNotMatch(P.adjudicateTurn(c), /## 단서 경로/);
+  const wb = P.worldbuildTurn(c);
+  assert.doesNotMatch(wb, /핵심 결론|추론가능|분위기, 예상 클라이맥스|장면 3~4개/);
+  assert.match(wb, /장면 순서·정답·예상 클라이맥스는 쓰지 마/);
+  assert.match(wb, /좋은 결말은 "상태\(위험요소 이름, 막힘\)"처럼 결과로만 걸어/);
+  assert.match(wb, /장면 순서나 NPC의 반응을 미리 짜 두지 마/);
+
+  c.characters.p1 = dw.makeCharacter({ name: '하르', class: '전사' }, 'p1');
+  c.resolve = { who: 'p1', results: [] };
+  const hit = P.resultsTurn(c, [{ who: 'p1', move: '접근전', tier: 'good', total: 11 }]);
+  assert.match(hit, /## 성공 처리: 하르의 접근전/);
+  assert.match(hit, /성공은 판을 바꾼다/);
+  assert.match(hit, /정보나 단서로 때우지 마/);
+  const look = P.resultsTurn(c, [{ who: 'p1', move: '상황 파악', tier: 'mixed', total: 8 }]);
+  assert.match(look, /하르의 상황 파악: 알아낸 것은 지금 할 수 있는 일이 보이게/);
+  assert.doesNotMatch(look, /성공은 판을 바꾼다/);
+  assert.doesNotMatch(P.resultsTurn(c, [{ who: 'p1', move: '접근전', tier: 'bad', total: 4 }]), /성공 처리/);
+
+  // A mystery keeps its clue paths.
+  const d20 = table();
+  d20.newCampaign({ premise: '항구 실종 사건', userRole: 'spectator', players: ['mock'] });
+  d20.setPaused(true);
+  assert.match(P.gmBrief(d20.c), /3단서 규칙/);
+  assert.match(P.adjudicateTurn(d20.c), /## 단서 경로/);
+  assert.match(P.worldbuildTurn(d20.c), /핵심 결론 1~3개/);
+});
+
 test('a small action with no roll keeps the turn, twice a turn; the third one spends it', async () => {
   const engine = table();
   engine.newCampaign({ rules: 'dw', premise: '폐광', userRole: 'player', players: ['mock'], userChar: { name: '흑수염', class: '도적' }, gmStyle: 'easy' });
