@@ -244,6 +244,24 @@ test("an easy GM puts what was said to the dice whole and rolls without asking; 
   assert.equal(engine.c.gmStyle, 'strict', 'strict unless picked');
 });
 
+// In play the GM piled up mood and clues, told one character what another had found out, and
+// left a split party unsaid until "입구에 혼자 남았습니다" three rounds later.
+test('the GM ends on where the next character is and what faces them, and tells each only what they can see', () => {
+  const engine = table();
+  engine.newCampaign({ rules: 'dw', premise: '폐광', userRole: 'spectator', players: ['mock', 'mock'] });
+  engine.setPaused(true);
+  const c = engine.c;
+  const brief = P.gmBrief(c);
+  assert.match(brief, /그 캐릭터가 지금 어디에, 누구와 있는지/);
+  assert.match(brief, /지금 그 캐릭터 앞에 닥친 일 하나/);
+  assert.match(brief, /"어떻게 하시겠습니까\?"만 붙이지 마/);
+  assert.match(brief, /그 자리에서 보고 들을 수 있는 것만/);
+  assert.match(brief, /판정으로 알아낸 것[^\n]*굴린 캐릭터에게/);
+  assert.match(brief, /일행이 갈라지면[^\n]*그 순간의 서술에서 분명히 말해/);
+  c.resolve = { who: 'p1', results: [] };
+  assert.match(P.resultsTurn(c, []), /질문의 답은 굴린 캐릭터의 이름을 불러/);
+});
+
 test('a small action with no roll keeps the turn, twice a turn; the third one spends it', async () => {
   const engine = table();
   engine.newCampaign({ rules: 'dw', premise: '폐광', userRole: 'player', players: ['mock'], userChar: { name: '흑수염', class: '도적' }, gmStyle: 'easy' });
