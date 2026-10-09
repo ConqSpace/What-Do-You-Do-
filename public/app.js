@@ -669,6 +669,11 @@ function renderHeader() {
   chat.title = 'AI 플레이어가 테이블에서 벌어진 일에 반응하는 정도: 보통 · 적게 · 끔 (누르면 바뀜)';
   // Off: the AI players' reactions already in the log are folded away too.
   document.body.classList.toggle('chatter-off', c?.chatter === 'off');
+  const al = $('#alertBtn');
+  al.hidden = !c || c.userRole === 'spectator';
+  al.textContent = alertOn() ? '🔔' : '🔕';
+  al.title = `내 차례 알림 소리·진동: ${alertOn() ? '켜짐' : '꺼짐'} (누르면 바뀜)`;
+  al.setAttribute('aria-label', al.title);
   const pb = $('#pauseBtn');
   pb.hidden = !c || state.phase === 'ended';
   pb.innerHTML = c?.paused ? ICON.play : ICON.pause;
@@ -712,7 +717,73 @@ function renderTurnbar() {
   }
   bar.innerHTML = html;
   bar.hidden = !html;
+  attend();
 }
+
+// ---------------------------------------------------------------------------
+// Your turn. A GM call takes half a minute, long enough to look away: once the page has
+// finished showing what led up to it, the turn bar lights up, the tab title says so, and a
+// chime and a buzz go off (those two can be turned off; the choice stays in this browser).
+
+const ALERT_KEY = 'wdyd.alert';
+const alertOn = () => { try { return localStorage.getItem(ALERT_KEY) !== 'off'; } catch { return true; } };
+const NEED_TITLE = { turn: '내 차례', roll: '굴릴 차례', choose: '고를 차례', gm: '서술할 차례' };
+const PAGE_TITLE = document.title;
+let need = ''; // what the table waits on you for: a key of NEED_TITLE, or ''
+
+function needNow() {
+  const c = camp();
+  if (!c || c.paused || state.phase === 'ended' || shown || showQueue.length) return '';
+  if (c.userRole === 'gm') return state.phase === 'gm-wait' ? 'gm' : '';
+  if (c.userRole !== 'player' || builderNeeded()) return '';
+  if ((c.pendingChoices || []).some((p) => p.who === 'user' && p.priced !== false)) return 'choose';
+  if (state.phase === 'roll' && (c.pendingChecks || []).some((p) => p.who === 'user')) return 'roll';
+  const thinking = state.seats.some((s) => s.status === 'thinking');
+  return state.phase === 'declare' && seatOf('user')?.status === 'waiting' && !thinking ? 'turn' : '';
+}
+
+function attend() {
+  const now = needNow();
+  const bar = $('#turnbar');
+  bar.classList.toggle('mine', !!now);
+  document.body.classList.toggle('my-turn', now === 'turn');
+  document.title = now && document.hidden ? `🎲 ${NEED_TITLE[now]}! · ${PAGE_TITLE}` : PAGE_TITLE;
+  if (now === need) return;
+  need = now;
+  if (!now) return;
+  bar.classList.remove('nudge');
+  void bar.offsetWidth; // restart the animation
+  bar.classList.add('nudge');
+  if (alertOn()) { chime(); navigator.vibrate?.(150); }
+  if (now === 'turn' && !mobile() && !document.hidden && !document.querySelector('dialog[open]')) $('#input').focus();
+}
+
+// A two-note chime made on the spot (no sound file). Browsers start audio only after the
+// person has touched the page, so the first touch wakes it up.
+let audio = null;
+function wakeAudio() {
+  try { audio ??= new (window.AudioContext || window.webkitAudioContext)(); audio.resume?.(); } catch {}
+}
+function chime() {
+  if (!audio) return;
+  try {
+    const t = audio.currentTime;
+    for (const [freq, at] of [[880, 0], [1320, 0.13]]) {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t + at);
+      g.gain.exponentialRampToValueAtTime(0.2, t + at + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + at + 0.4);
+      o.connect(g).connect(audio.destination);
+      o.start(t + at);
+      o.stop(t + at + 0.45);
+    }
+  } catch {}
+}
+document.addEventListener('pointerdown', wakeAudio, { once: true });
+document.addEventListener('keydown', wakeAudio, { once: true });
+document.addEventListener('visibilitychange', attend);
+$('#turnbar').addEventListener('animationend', (e) => e.currentTarget.classList.remove('nudge'));
 
 function rollOf(rid) {
   return log.find((m) => m.roll?.rid === rid)?.roll;
@@ -1007,6 +1078,14 @@ $('#sheetBack').onclick = closeSheet;
 $('#pauseBtn').onclick = () => api('/api/pause', { paused: !camp()?.paused });
 $('#paceBtn').onclick = () => api('/api/pace', { pace: PACE_NEXT[camp()?.pace] || 'normal' });
 $('#chatterBtn').onclick = () => api('/api/chatter', { level: CHATTER_NEXT[camp()?.chatter] || 'low' });
+$('#alertBtn').onclick = () => {
+  const on = !alertOn();
+  try { localStorage.setItem(ALERT_KEY, on ? 'on' : 'off'); } catch {}
+  wakeAudio();
+  if (on) { chime(); navigator.vibrate?.(150); }
+  toast(on ? '내 차례가 오면 소리와 진동으로 알려 드려요' : '내 차례 알림 소리·진동을 껐어요');
+  renderHeader();
+};
 $('#setupCancel').onclick = () => $('#setup').close();
 $('#stepBack').onclick = () => { step = Math.max(0, step - 1); showStep(); };
 $('#stepNext').onclick = () => {

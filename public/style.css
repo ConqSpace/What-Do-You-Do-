@@ -377,6 +377,12 @@ body.chatter-off .chatter { display: none; }
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
 .turnbar .grow { flex: 1; min-width: 0; }
+/* The table waits on you: the bar takes the accent, nudges once, and the input glows. */
+.turnbar.mine { background: color-mix(in srgb, var(--accent) 22%, var(--surface2)); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
+.turnbar.nudge { animation: nudge .5s ease-out 2; }
+@keyframes nudge { 40% { transform: scale(1.02); } }
+body.my-turn #input { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+@media (prefers-reduced-motion: reduce) { .turnbar.nudge { animation: none; } }
 .turnbar button { min-height: 36px; padding: 0 12px; white-space: nowrap; font-size: var(--fs-sm); }
 .composer { flex: none; padding: 8px 12px calc(12px + var(--safe-b)); display: flex; flex-direction: column; gap: 8px; }
 .chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
