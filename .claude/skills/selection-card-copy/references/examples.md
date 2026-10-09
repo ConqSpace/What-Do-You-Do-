@@ -71,7 +71,6 @@ How one story went from speech to plot to the Dungeon World way.
 
 첫 장면 · 갱도 입구의 정찰병
 고블린 정찰병 셋이 모험가들에게 활을 겨눈다. 그중 하나가 대장장이의 망치를 들고 있다.
-마스터가 먼저 물을 것: "대장장이는 여러분에게 어떤 사람인가요?"
 
 이 이야기는: 거친 · 던전 · 전투 · 구출
 ```
@@ -81,7 +80,7 @@ GM only:
 - 깊은 곳에서 깨어난 것 (고대의 저주 · 동기: 깨어나 퍼진다). 흉조: 갱도가 흔들린다 → 고블린들이 미쳐 날뛴다 → 봉인이 깨진다. 재앙: 산 아래 마을까지 어둠이 번진다 (파괴)
 - 등장인물: 대장장이 브론, 고블린 족장 스크랄 · 빈칸: 깨어난 것의 정체
 
-The earlier first scene, "갱도 입구 기둥에 대장장이의 망치가 걸려 있다", was a still life; the new one puts arrows on the party and asks a question, as the rulebook's first session does.
+The earlier first scene, "갱도 입구 기둥에 대장장이의 망치가 걸려 있다", was a still life; the new one puts arrows on the party, as the rulebook's first session does. It once also asked "대장장이는 여러분에게 어떤 사람인가요?"; in play a player who had never heard of 브론 asked back who he was, and the GM answered for them and asked again. The GM now tells who 브론 is in the opening.
 
 4. Cut to one sitting (current). Two dangers, three questions and four portents each made a game nobody finished: the GM hung a threat clock and endings on every one. The goblin tribe stopped being a danger and became foes in the scene; the thing in the deep is the one clock.
 
@@ -97,7 +96,6 @@ The earlier first scene, "갱도 입구 기둥에 대장장이의 망치가 걸�
 
 첫 장면 · 갱도 입구의 정찰병
 갱도 입구, 고블린 정찰병 셋이 활을 겨눈다. 하나가 대장장이의 망치를 들고 있다.
-마스터가 먼저 물을 것: "대장장이는 여러분에게 어떤 사람인가요?"
 
 이 이야기는: 거친 · 구출
 ```

@@ -948,7 +948,7 @@ function renderHero() {
     <p class="shsyn">${esc(situation || '')}</p>
     ${st?.questions || st?.scene ? `<details class="shmore"${heroMore ? ' open' : ''}><summary><span class="c">${[st.questions ? '이야기가 답할 질문' : '', st.scene ? '첫 장면' : ''].filter(Boolean).join(' · ')} 보기</span><span class="o">접기</span></summary>
     ${st.questions ? `<div class="shq"><b>이야기가 답할 질문</b><ul>${st.questions.map((q) => `<li>${esc(q)}</li>`).join('')}</ul></div>` : ''}
-    ${st.scene ? `<div class="shep"><b>첫 장면 · ${esc(st.scene.title)}</b><span>${esc(st.scene.text)}</span>${st.scene.ask ? `<span class="shask">${esc(ruleMeta()?.gmName || 'GM')}${/[가-힣]$/.test(ruleMeta()?.gmName || 'GM') ? '가' : '이'} 먼저 물을 것: "${esc(st.scene.ask)}"</span>` : ''}</div>` : ''}</details>` : ''}
+    ${st.scene ? `<div class="shep"><b>첫 장면 · ${esc(st.scene.title)}</b><span>${esc(st.scene.text)}</span></div>` : ''}</details>` : ''}
     ${storyPick === 'random' ? '<div class="bchips"><button type="button" class="bchip dice" data-reroll>🎲 다시 뽑기</button></div>' : ''}
     ${storyPick === 'custom' ? '<p class="muted">아래 "직접 고치기"에 전제를 적어 주세요.</p>' : ''}</div>`;
 }
@@ -958,8 +958,8 @@ function pickStory(id) {
   const f = form();
   const set = (o) => { f.premise.value = o.premise || ''; f.tone.value = o.tone || ''; f.opening.value = o.opening || ''; $('#storyLength').value = o.length ?? 'short'; $('#storyTitle').value = o.title || ''; };
   const st = storiesFor(setupRules).find((x) => x.id === id);
-  // A Dungeon World story also hands the GM its front, its questions and what to ask first.
-  storyExtra = st?.front ? { front: st.front, questions: st.questions, openingAsk: st.scene?.ask } : {};
+  // A Dungeon World story also hands the GM its front and its questions.
+  storyExtra = st?.front ? { front: st.front, questions: st.questions } : {};
   if (st) {
     set({ premise: st.situation, tone: st.tone, opening: st.scene?.text, length: st.length, title: st.scene ? st.title : '' });
     storyGenre = st.genre;

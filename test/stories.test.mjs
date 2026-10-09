@@ -23,9 +23,11 @@ test('gallery stories: a situation, questions and a first scene for the players'
       assert.ok(n <= 2 && s.situation.length <= 80, `${s.id}: the situation is two short sentences (${n}, ${s.situation.length} chars)`);
       assert.equal(s.questions.length, 2, `${s.id}: two questions`);
       for (const q of s.questions) assert.match(q, /\?$/, `${s.id}: "${q}" is a question`);
-      assert.ok(s.scene?.title && s.scene.text.length <= 60 && s.scene.ask, `${s.id}: a short first scene with something to ask (${s.scene?.text.length} chars)`);
+      assert.ok(s.scene?.title && s.scene.text.length <= 60, `${s.id}: a short first scene (${s.scene?.text.length} chars)`);
+      // Players don't know the world yet: the GM tells them, it doesn't ask them about it.
+      assert.equal(s.scene.ask, undefined, `${s.id}: no opening question`);
       assert.equal(s.tags.length, 2, `${s.id}: two tags`);
-      for (const t of [s.situation, s.scene.text, s.scene.ask, ...s.questions]) {
+      for (const t of [s.situation, s.scene.text, ...s.questions]) {
         for (const w of STIFF) assert.ok(!t.includes(w), `${s.id}: "${w}"`);
       }
     }

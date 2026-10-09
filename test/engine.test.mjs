@@ -486,7 +486,7 @@ test('a Dungeon World story hands the GM its front and the question to open with
   };
   engine.newCampaign({
     rules: 'dw', premise: '고블린이 대장장이를 끌고 갔다', userRole: 'spectator', players: ['mock'],
-    opening: '고블린 정찰병 셋이 활을 겨눈다', openingAsk: '대장장이는 여러분에게 어떤 사람인가요?',
+    opening: '고블린 정찰병 셋이 활을 겨눈다',
     questions: ['대장장이는 살아서 돌아올 수 있을까?'],
     front: { dangers: [{ name: '붉은이빨 고블린 부족', type: '괴물 떼', motive: '새 보금자리를 찾는다', portents: ['마을을 습격한다', '마을로 몰려온다'], doom: { text: '마을이 넘어간다', type: '압제' } }, { name: 'x'.repeat(200) }], cast: ['대장장이 브론'], blank: '깨어난 것의 정체' },
   });
@@ -496,7 +496,9 @@ test('a Dungeon World story hands the GM its front and the question to open with
   assert.match(turns.worldbuild, /흉조\(내버려 두면 이 순서로 벌어진다\): 마을을 습격한다 → 마을로 몰려온다/);
   assert.match(turns.worldbuild, /빈칸\(정하지 마\. 플레이하며 정한다\): 깨어난 것의 정체/);
   assert.match(turns.worldbuild, /이야기가 답할 질문.*대장장이는 살아서 돌아올 수 있을까\?/);
-  assert.match(turns.opening, /이 질문을 던지고.*대장장이는 여러분에게 어떤 사람인가요\?/);
+  // The opening tells: who is at the center, what happened, why the party is here, the danger now.
+  assert.match(turns.opening, /1\. 이야기의 중심에 있는 인물이 누구인지[\s\S]*2\. [\s\S]*3\. 캐릭터들이 왜 여기 와 있는지[\s\S]*4\. 지금 눈앞에 닥친 위험/);
+  assert.match(turns.opening, /플레이어에게 설정이나 사연을 묻지 말고/);
   engine.setPaused(true);
 
   const { engine: e2 } = table();
@@ -712,21 +714,6 @@ test("a player's answer to the GM's question is kept apart and reaches the GM as
   const v = engine.view().campaign;
   assert.ok(Array.isArray(v.knownList) && v.knownList.every((f) => f.p && Array.isArray(f.args)));
   assert.ok(engine.c.log.filter((m) => m.text?.startsWith('🤝 ')).every((m) => m.bonds));
-});
-
-test("the story's opening question is put to each player until they answer it", async () => {
-  const P = await import('../lib/prompts.mjs');
-  const { engine } = table();
-  engine.newCampaign({ rules: 'dw', premise: '던전', userRole: 'spectator', players: ['mock', 'mock'], openingAsk: '브론은 어떤 사람인가요?' });
-  engine.setPaused(true);
-  const c = engine.c;
-  c.characters.p1 = engine.makeCharacter({ name: '하르', class: '전사' }, 'p1');
-  c.characters.p2 = engine.makeCharacter({ name: '미르', class: '도적' }, 'p2');
-  assert.match(P.declareTurn(c, 'p1'), /마스터가 처음에 모두에게 물은 질문에 너는 아직 답하지 않았다: "브론은 어떤 사람인가요\?"/);
-  assert.match(P.declareTurn(c, 'p1'), /마스터가 하르에게 묻는다/);
-  c.log.push({ id: c.nextId++, round: 1, type: 'declare', from: 'p1', answer: '내 칼을 벼려 준 사람', say: '', action: '' });
-  assert.doesNotMatch(P.declareTurn(c, 'p1'), /아직 답하지 않았다/);
-  assert.match(P.declareTurn(c, 'p2'), /아직 답하지 않았다/);
 });
 
 test('a boss has no HP: aimed rolls fill its hidden clock, phases turn at 3 and 6, and only a full clock fells it', async () => {

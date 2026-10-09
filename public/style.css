@@ -591,7 +591,6 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
 .shq { font-size: var(--fs-sm); }
 .shq b { font-size: var(--fs-xs); color: var(--accent); }
 .shq ul { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
-.shask { margin-top: 4px; color: var(--muted); font-size: var(--fs-xs); }
 .srow .sub { margin: 14px 0 6px; }
 .stiles { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 4px; scrollbar-width: thin; }
 .stile {
