@@ -102,6 +102,7 @@ async function handleApi(req, res, url) {
   }
   if (route === 'GET /api/state') return sendJson(res, 200, engine.view());
   if (route === 'GET /api/secrets') return sendJson(res, 200, engine.secrets());
+  if (route === 'GET /api/director') return sendJson(res, 200, { note: engine.c?.director || '' });
   if (route === 'GET /api/log') return sendJson(res, 200, engine.logTail(5000));
   if (route === 'GET /api/builder') return sendJson(res, 200, builderInfo(url.searchParams.get('rules') || engine.c?.rules));
   if (req.method !== 'POST') return sendJson(res, 404, { error: 'not found' });
@@ -120,6 +121,7 @@ async function handleApi(req, res, url) {
     case '/api/pace': err = engine.setPace(body.pace); break;
     case '/api/chatter': err = engine.setChatter(body.level); break;
     case '/api/gmstyle': err = engine.setGmStyle(body.style); break;
+    case '/api/director': err = engine.direct(body.text); break;
     case '/api/builder/draft': err = engine.builderSave(body.draft); break;
     case '/api/builder/roll': err = engine.builderRoll(body.name); break;
     case '/api/builder/finish': err = engine.builderFinish(body); break;

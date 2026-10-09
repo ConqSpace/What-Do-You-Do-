@@ -1134,6 +1134,38 @@ document.addEventListener('keydown', (e) => {
 matchMedia('(max-width: 899px)').addEventListener('change', placeSheet);
 
 // ---------------------------------------------------------------------------
+// Playtest: a hidden box for a note to the GM, shown only with #director in the address.
+// The GM reads it on its next story turn; the table never sees it.
+
+const director = Object.assign(document.createElement('form'), { id: 'director', hidden: true });
+director.innerHTML = `<div class="director-head">방장 지시<span class="muted" id="directorState"></span></div>
+<textarea id="directorText" rows="3" placeholder="다음 GM 차례에 한 번 들어가요. 예: 입구는 끝내고 소굴로 넘겨"></textarea>
+<div class="director-row"><button type="button" class="ghost" id="directorClear">비우기</button><button type="submit">보내기</button></div>`;
+document.body.append(director);
+let directorPoll = null;
+async function showDirector() {
+  director.hidden = location.hash !== '#director';
+  clearInterval(directorPoll);
+  if (director.hidden) return;
+  const refresh = async () => {
+    const j = await fetch('/api/director').then((r) => r.json()).catch(() => ({}));
+    $('#directorState').textContent = j.note ? `대기 중: ${j.note}` : '대기 중인 지시 없음';
+  };
+  directorPoll = setInterval(refresh, 4000);
+  refresh();
+}
+director.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = $('#directorText').value.trim();
+  if (!text) return;
+  const r = await api('/api/director', { text });
+  if (r.ok) { $('#directorText').value = ''; showDirector(); }
+});
+$('#directorClear').addEventListener('click', async () => { await api('/api/director', { text: '' }); showDirector(); });
+addEventListener('hashchange', showDirector);
+showDirector();
+
+// ---------------------------------------------------------------------------
 // Move tooltips: a move's name says only its name. What it does shows on hover (mouse),
 // on a long press (touch), or on focus (keyboard).
 
