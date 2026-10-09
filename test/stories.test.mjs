@@ -11,7 +11,7 @@ const sentences = (t) => t.split(/(?<=[.?!])\s+/).filter(Boolean);
 test('gallery stories: a situation, questions and a first scene for the players', () => {
   const ids = new Set(STARTS.map((s) => s.id));
   for (const [rules, list] of Object.entries(STORIES)) {
-    assert.ok(list.length >= 6, `${rules}: enough stories for a gallery`);
+    assert.ok(list.length >= 2 && list.length <= 3, `${rules}: a few stories, not a catalog`);
     for (const s of list) {
       assert.ok(!ids.has(s.id), `duplicate id ${s.id}`);
       ids.add(s.id);
@@ -20,11 +20,11 @@ test('gallery stories: a situation, questions and a first scene for the players'
       assert.ok(GENRES.includes(s.genre), `${s.id}: genre ${s.genre}`);
       assert.ok(LENGTH[s.length], `${s.id}: length ${s.length}`);
       const n = sentences(s.situation).length;
-      assert.ok(n >= 2 && n <= 4 && s.situation.length <= 140, `${s.id}: the situation is a few short sentences (${n}, ${s.situation.length} chars)`);
-      assert.equal(s.questions.length, 3, `${s.id}: three questions`);
+      assert.ok(n <= 2 && s.situation.length <= 80, `${s.id}: the situation is two short sentences (${n}, ${s.situation.length} chars)`);
+      assert.equal(s.questions.length, 2, `${s.id}: two questions`);
       for (const q of s.questions) assert.match(q, /\?$/, `${s.id}: "${q}" is a question`);
-      assert.ok(s.scene?.title && s.scene.text.length <= 110 && s.scene.ask, `${s.id}: a first scene with something to ask`);
-      assert.equal(s.tags.length, 4, `${s.id}: four tags`);
+      assert.ok(s.scene?.title && s.scene.text.length <= 60 && s.scene.ask, `${s.id}: a short first scene with something to ask (${s.scene?.text.length} chars)`);
+      assert.equal(s.tags.length, 2, `${s.id}: two tags`);
       for (const t of [s.situation, s.scene.text, s.scene.ask, ...s.questions]) {
         for (const w of STIFF) assert.ok(!t.includes(w), `${s.id}: "${w}"`);
       }
@@ -32,15 +32,16 @@ test('gallery stories: a situation, questions and a first scene for the players'
   }
 });
 
+// One danger is one threat clock: a story sized for one sitting.
 test('Dungeon World stories bring a front, not a plot', () => {
   for (const s of STORIES.dw) {
     const f = s.front;
-    assert.ok(f.dangers.length >= 2 && f.dangers.length <= 3, `${s.id}: two or three dangers`);
+    assert.equal(f.dangers.length, 1, `${s.id}: one danger`);
     for (const d of f.dangers) {
       assert.ok(DANGER_TYPES.includes(d.type), `${s.id}: ${d.name} is a ${d.type}`);
-      assert.ok(d.motive && d.portents.length >= 2, `${s.id}: ${d.name} has a motive and portents`);
+      assert.ok(d.motive && d.portents.length === 2, `${s.id}: ${d.name} has a motive and two portents`);
       assert.ok(d.doom.text && DOOM_TYPES.includes(d.doom.type), `${s.id}: ${d.name}'s doom`);
     }
-    assert.ok(f.cast.length >= 2 && f.blank, `${s.id}: a cast and something left blank`);
+    assert.ok(f.cast.length === 2 && f.blank, `${s.id}: two in the cast and something left blank`);
   }
 });

@@ -284,12 +284,12 @@ test('a scene that runs long: the GM is pushed to close it, then told to cut; a 
   const c = engine.c;
   c.scene = { title: '입구 비탈의 화살', description: '' };
   const turn = () => P.adjudicateTurn(c);
-  c.round = 2;
+  c.round = SCENE.short.push - 1;
   assert.doesNotMatch(turn(), /장면 길이/);
   c.round = SCENE.short.push;
-  assert.match(turn(), /장면 길이: "입구 비탈의 화살" 3라운드째\n- 이 장면은 할 만큼 했다/);
+  assert.match(turn(), new RegExp(`장면 길이: "입구 비탈의 화살" ${SCENE.short.push}라운드째\n- 이 장면은 할 만큼 했다`));
   c.round = SCENE.short.cut;
-  assert.match(turn(), /⚠ 장면 길이: "입구 비탈의 화살" 5라운드째, 너무 길다/);
+  assert.match(turn(), new RegExp(`⚠ 장면 길이: "입구 비탈의 화살" ${SCENE.short.cut}라운드째, 너무 길다`));
   assert.match(P.resultsTurn(c, []), /이번 결과로 이 장면을 끝내/, 'the narration is told too');
   c.resolve = { who: null, results: [] };
   engine.endTurn({ narration: '일행은 갱도 안으로 들어섭니다.', scene: { title: '굽은 갱도', description: '칠흑' } });

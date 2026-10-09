@@ -603,8 +603,7 @@ dialog form { height: 100%; display: flex; flex-direction: column; }
 .stile .si { font-size: 22px; line-height: 1; }
 .stile .st { font-size: var(--fs-sm); line-height: 1.3; }
 .r-start { background: var(--surface2); }
-.r-kingdom { background: color-mix(in srgb, #7b6cd9 30%, var(--surface2)); }
-.r-dungeon { background: color-mix(in srgb, #c0623a 30%, var(--surface2)); }
+.r-story { background: color-mix(in srgb, #7b6cd9 30%, var(--surface2)); }
 .r-genres { background: color-mix(in srgb, #3f8f86 30%, var(--surface2)); }
 .sedit { margin-top: 12px; border-top: 1px solid var(--line); }
 .sedit summary { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; list-style: none; font-size: var(--fs-md); }

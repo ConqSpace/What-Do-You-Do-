@@ -465,6 +465,7 @@ test('a story from the gallery: its title stays, and the GM gets its first scene
   await until(() => engine.c.prep?.step !== 'world');
   assert.match(turn, /첫 장면: 종탑 아래 남은 작은 신발 한 짝/);
   assert.match(turn, /이야기 규모: 짧은 모험/);
+  assert.match(turn, /좋은 결말 하나와 나쁜 결말 하나/, 'a short story gets one ending each way');
   assert.match(turn, /제목: 잿빛 종탑의 비밀/);
   assert.equal(engine.c.title, '잿빛 종탑의 비밀');
   engine.setPaused(true);
