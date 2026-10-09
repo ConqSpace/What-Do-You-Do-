@@ -244,6 +244,44 @@ test("an easy GM puts what was said to the dice whole and rolls without asking; 
   assert.equal(engine.c.gmStyle, 'strict', 'strict unless picked');
 });
 
+test('a small action with no roll keeps the turn, twice a turn; the third one spends it', async () => {
+  const engine = table();
+  engine.newCampaign({ rules: 'dw', premise: '폐광', userRole: 'player', players: ['mock'], userChar: { name: '흑수염', class: '도적' }, gmStyle: 'easy' });
+  await until(() => engine.c.phase === 'declare' && engine.c.turn === 'user' && engine.busy.size === 0);
+  const c = engine.c;
+  const seen = [];
+  let next = null;
+  const orig = engine.backends.chat.bind(engine.backends);
+  engine.backends.chat = async (seat, kind, b, t, ctx) => {
+    if (kind !== 'adjudicate') return orig(seat, kind, b, t, ctx);
+    seen.push(t);
+    if (seen.length === 4) { next = ctx.decls[0]?.key; engine.setPaused(true); }
+    return { ok: true, text: JSON.stringify({ free: true, narration: `횃불 ${seen.length}` }) };
+  };
+  const settled = (n) => () => seen.length === n && engine.busy.size === 0 && c.phase === 'declare';
+
+  engine.userPost('declare', '@횃불을 치켜든다');
+  await until(settled(1));
+  assert.equal(c.turn, 'user', 'a small action keeps the turn');
+  assert.ok(c.log.some((m) => m.type === 'narration' && m.text === '횃불 1'));
+  assert.match(seen[0], /작은 행동\("free": true\)/, 'an easy GM gets it on an acting turn too');
+  assert.match(seen[0], /"free": false/);
+  engine.userPost('declare', '@단검을 뽑는다');
+  await until(settled(2));
+  assert.equal(c.turn, 'user');
+  assert.equal(c.holds.user || 0, 0, 'its own count, not the short answers');
+
+  engine.userPost('declare', '@문을 닫는다');
+  await until(() => seen.length === 4);
+  assert.match(seen[2], /작은 행동을 이미 2번 받았다/);
+  assert.doesNotMatch(seen[2], /"free": false/);
+  assert.equal(next, 'p1', 'the third small action spent the turn');
+
+  c.kept = { p1: 'free' };
+  assert.match(P.declareTurn(c, 'p1'), /방금 한 작은 행동은 차례를 쓰지 않았다/, 'an AI player is told to go on');
+  engine.backends.chat = orig;
+});
+
 test("an easy GM: one action is one roll, and it doesn't hold an acting player's turn to ask", async () => {
   const engine = table();
   engine.newCampaign({ rules: 'dw', premise: '폐광', userRole: 'player', players: ['mock'], userChar: { name: '흑수염', class: '도적' }, gmStyle: 'easy' });
